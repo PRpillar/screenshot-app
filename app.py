@@ -63,3 +63,4 @@ for record in records:
     os.remove(screenshot_path)
 
 driver.quit()
+

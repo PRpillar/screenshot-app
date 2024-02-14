@@ -164,4 +164,3 @@ credentials.json
 .DS_Store
 old_db.py
 db_test.py
-*.csv
