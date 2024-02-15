@@ -1,6 +1,4 @@
-# <Screenshot App>
-
-<DESCRIPTION>
+# Screenshot App
 
 This repository contains a Python script for automatically taking screenshots of web pages listed in a Google Sheets document and uploading them to Google Drive. It is set up to run weekly using GitHub Actions.
 
