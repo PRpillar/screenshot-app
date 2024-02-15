@@ -8,18 +8,23 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 import os
 from datetime import datetime
+import json
 
 # Google API Setup
 scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
-service_account_file = 'credentials.json'
+service_account_info = os.getenv('GOOGLE_SERVICE_ACCOUNT') or json.load(open('../credentials.json'))
 
-credentials = Credentials.from_service_account_file(service_account_file, scopes=scopes)
+if service_account_info:
+    credentials = Credentials.from_service_account_info(json.loads(service_account_info), scopes=scopes)
+else:
+    credentials = Credentials.from_service_account_file('../credentials.json', scopes=scopes)
+
 gc = gspread.authorize(credentials)
 drive_service = build('drive', 'v3', credentials=credentials)
 
 # Google Sheet and Drive Setup
 spreadsheet_id = '1OHzJc9hvr6tgi2ehogkfP9sZHYkI3dW1nB62JCpM9D0'
-sheet_name = 'Database' 
+sheet_name = 'Test Database' 
 sheet = gc.open_by_key(spreadsheet_id).worksheet(sheet_name)
 records = sheet.get_all_records()  # Assumes first row is header
 
