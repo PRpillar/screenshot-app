@@ -43,7 +43,7 @@ The script will read the URLs from the specified Google Sheets document, take sc
 
 ## GitHub Actions
 
-This repository is configured to run the script automatically every Sunday at 6 AM (UTC) using GitHub Actions. The workflow is defined in .github/workflows/monthly.yml.
+This repository is configured to run the script automatically on 28th day of every month at 6 AM (UTC) using GitHub Actions. The workflow is defined in .github/workflows/monthly.yml.
 
 You can modify the schedule in the workflow file by changing the cron syntax in the on.schedule section.
 
