@@ -9,6 +9,8 @@ from googleapiclient.http import MediaFileUpload
 import os
 from datetime import datetime
 import json
+import random
+import time
 
 # Google API Setup
 scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
@@ -24,7 +26,7 @@ drive_service = build('drive', 'v3', credentials=credentials)
 
 # Google Sheet and Drive Setup
 spreadsheet_id = '1OHzJc9hvr6tgi2ehogkfP9sZHYkI3dW1nB62JCpM9D0'
-sheet_name = 'Test Database' 
+sheet_name = 'Database' 
 sheet = gc.open_by_key(spreadsheet_id).worksheet(sheet_name)
 records = sheet.get_all_records()  # Assumes first row is header
 
@@ -44,6 +46,8 @@ for record in records:
     
     # Navigate and take a screenshot
     driver.get(url)
+    time.sleep(random.uniform(1, 3))  # Random delay after loading the page to immitate human behviour
+    
 
     # Get the current date
     current_date = datetime.now().strftime('%Y-%m-%d')
@@ -68,4 +72,3 @@ for record in records:
     os.remove(screenshot_path)
 
 driver.quit()
-

@@ -2,7 +2,7 @@ name: monthly
 
 on:
   schedule:
-    - cron: "0 6 * * SUN"  # Scheduled to run at 6AM on Sundays for testing purposes, change to month when testing is done
+    - cron: "0 6 28 * *"  # Scheduled to run at 6AM on 28th day of every month
   workflow_dispatch:
 
 jobs:
