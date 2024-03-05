@@ -40,29 +40,35 @@ service = Service(ChromeDriverManager().install())
 driver = webdriver.Chrome(service=service, options=chrome_options)
 driver.maximize_window()
 
+max_attempts = 5
+
 for record in records:
     url = record['Link']
     folder_id = record['Link to folder']
-    
-    # Navigate and take a screenshot
-    driver.get(url)
-    time.sleep(random.uniform(1, 3))  # Random delay after loading the page to immitate human behviour
-    
+    successful_connection = False  # Flag to track if connection was successful
 
-    # Get the current date
-    current_date = datetime.now().strftime('%Y-%m-%d')
+    for attempt in range(max_attempts):
+        try:
+            driver.get(url)
+            time.sleep(random.uniform(1, 3))  # Random delay after loading the page to imitate human behavior
+            successful_connection = True  # Set the flag to True if successful
+            break  # Exit the loop if successful
+        except Exception as e:  # Catch the specific exception if possible
+            print(f"Attempt {attempt + 1} of {max_attempts} failed: {str(e)}")
+            time.sleep(10)  # Wait for 10 seconds before retrying
+
+    if not successful_connection:
+        print(f"Failed to connect to {url} after {max_attempts} attempts.")
+        continue  # Skip the rest of the code in this loop iteration and move to the next record
     
-    # Get the dimensions of the full page
+    # If connection was successful, proceed with screenshot and upload
+    current_date = datetime.now().strftime('%Y-%m-%d')
     page_width = driver.execute_script('return document.body.scrollWidth')
     page_height = driver.execute_script('return document.body.scrollHeight')
-    
-    # Format the filename to include the current date, client, and platform
     screenshot_path = f"{current_date}-{record['Client']}-{record['Platform']}.png"
-
-    # Resize the window to the page size
     driver.set_window_size(page_width, page_height)
     driver.save_screenshot(screenshot_path)
-    
+
     # Upload to Google Drive
     file_metadata = {'name': screenshot_path, 'parents': [folder_id]}
     media = MediaFileUpload(screenshot_path, mimetype='image/png')
