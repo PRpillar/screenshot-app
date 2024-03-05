@@ -26,7 +26,7 @@ drive_service = build('drive', 'v3', credentials=credentials)
 
 # Google Sheet and Drive Setup
 spreadsheet_id = '1OHzJc9hvr6tgi2ehogkfP9sZHYkI3dW1nB62JCpM9D0'
-sheet_name = 'Test Database' 
+sheet_name = 'Database' 
 sheet = gc.open_by_key(spreadsheet_id).worksheet(sheet_name)
 records = sheet.get_all_records()  # Assumes first row is header
 
