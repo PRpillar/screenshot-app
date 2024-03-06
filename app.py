@@ -11,6 +11,7 @@ from datetime import datetime
 import json
 import random
 import time
+from PIL import Image
 
 # Google API Setup
 scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
@@ -57,20 +58,24 @@ for record in records:
             print(f"Attempt {attempt + 1} of {max_attempts} failed: {str(e)}")
             time.sleep(10)  # Wait for 10 seconds before retrying
 
-    if not successful_connection:
-        print(f"Failed to connect to {url} after {max_attempts} attempts.")
-        continue  # Skip the rest of the code in this loop iteration and move to the next record
-    
-    # If connection was successful, proceed with screenshot and upload
+    # Prepare screenshot_path and file_metadata common for both cases
     current_date = datetime.now().strftime('%Y-%m-%d')
-    page_width = driver.execute_script('return document.body.scrollWidth')
-    page_height = driver.execute_script('return document.body.scrollHeight')
     screenshot_path = f"{current_date}-{record['Client']}-{record['Platform']}.png"
-    driver.set_window_size(page_width, page_height)
-    driver.save_screenshot(screenshot_path)
+    file_metadata = {'name': screenshot_path, 'parents': [folder_id]}
+
+    if not successful_connection:
+        print(f"Failed to connect to {url} after {max_attempts} attempts. Creating and uploading an empty file.")
+        # Create an empty PNG file
+        img = Image.new('RGB', (1, 1), color = (255, 255, 255))
+        img.save(screenshot_path)
+    else:
+        # Connection was successful, proceed with screenshot capture
+        page_width = driver.execute_script('return document.body.scrollWidth')
+        page_height = driver.execute_script('return document.body.scrollHeight')
+        driver.set_window_size(page_width, page_height)
+        driver.save_screenshot(screenshot_path)
 
     # Upload to Google Drive
-    file_metadata = {'name': screenshot_path, 'parents': [folder_id]}
     media = MediaFileUpload(screenshot_path, mimetype='image/png')
     file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
     
