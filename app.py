@@ -11,7 +11,7 @@ from datetime import datetime
 import json
 import random
 import time
-from PIL import Image
+from google.auth.transport.requests import Request
 
 # Google API Setup
 scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
@@ -50,12 +50,7 @@ for record in records:
 
     for attempt in range(max_attempts):
         try:
-            try:
-                driver.get(url)
-            except BrokenPipeError:
-                # Handle BrokenPipeError by retrying the connection
-                continue
-
+            driver.get(url)
             time.sleep(random.uniform(1, 3))  # Random delay after loading the page to imitate human behavior
             successful_connection = True  # Set the flag to True if successful
             break  # Exit the loop if successful
@@ -74,6 +69,12 @@ for record in records:
     screenshot_path = f"{current_date}-{record['Client']}-{record['Platform']}.png"
     driver.set_window_size(page_width, page_height)
     driver.save_screenshot(screenshot_path)
+
+    # Check if token is valid and refresh if necessary before uploading
+    if credentials.expired or credentials.valid is False:
+        credentials.refresh(Request())
+        # Ensure the Drive service uses the refreshed credentials
+        drive_service = build('drive', 'v3', credentials=credentials)
 
     # Upload to Google Drive
     file_metadata = {'name': screenshot_path, 'parents': [folder_id]}
