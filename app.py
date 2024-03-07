@@ -69,11 +69,6 @@ for record in records:
         print(f"Timeout while trying to take screenshot of {url}: {str(e)}")
         continue  # Skip file upload for this record if screenshot failed
 
-    # Check if token is valid and refresh if necessary before uploading
-    if credentials.expired or credentials.valid is False:
-        credentials.refresh(Request())
-        drive_service = build('drive', 'v3', credentials=credentials)
-
     # Try to upload to Google Drive
     try:
         file_metadata = {'name': screenshot_path, 'parents': [folder_id]}
