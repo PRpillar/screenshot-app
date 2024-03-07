@@ -11,7 +11,7 @@ from datetime import datetime
 import json
 import random
 import time
-from google.auth.transport.requests import Request
+
 
 # Google API Setup
 scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
@@ -41,25 +41,19 @@ service = Service(ChromeDriverManager().install())
 driver = webdriver.Chrome(service=service, options=chrome_options)
 driver.maximize_window()
 
-max_attempts = 5
-
 for record in records:
     url = record['Link']
     folder_id = record['Link to folder']
     successful_connection = False  # Flag to track if connection was successful
 
-    for attempt in range(max_attempts):
-        try:
-            driver.get(url)
-            time.sleep(random.uniform(1, 3))  # Random delay after loading the page to imitate human behavior
-            successful_connection = True  # Set the flag to True if successful
-            break  # Exit the loop if successful
-        except Exception as e:  # Catch the specific exception if possible
-            print(f"Attempt {attempt + 1} of {max_attempts} failed: {str(e)}")
-            time.sleep(10)  # Wait for 10 seconds before retrying
-
+    try:
+        driver.get(url)
+        time.sleep(random.uniform(1, 3))  # Random delay after loading the page to imitate human behavior
+        successful_connection = True  # Set the flag to True if successful
+    except Exception as e:
+        print(f"Failed to connect to {url}: {str(e)}")
+    
     if not successful_connection:
-        print(f"Failed to connect to {url} after {max_attempts} attempts.")
         continue  # Skip the rest of the code in this loop iteration and move to the next record
     
     # If connection was successful, proceed with screenshot and upload
@@ -70,17 +64,14 @@ for record in records:
     driver.set_window_size(page_width, page_height)
     driver.save_screenshot(screenshot_path)
 
-    # Check if token is valid and refresh if necessary before uploading
-    if credentials.expired or credentials.valid is False:
-        credentials.refresh(Request())
-        # Ensure the Drive service uses the refreshed credentials
-        drive_service = build('drive', 'v3', credentials=credentials)
-
     # Upload to Google Drive
     file_metadata = {'name': screenshot_path, 'parents': [folder_id]}
     media = MediaFileUpload(screenshot_path, mimetype='image/png')
-    file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-    
+    try:
+        file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    except Exception as e:
+        print(f"Failed to upload {screenshot_path} to Google Drive: {str(e)}")
+
     # Optionally, delete the local file after upload
     os.remove(screenshot_path)
 
