@@ -3,7 +3,7 @@ import gspread
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from webdriver_manager.chrome import ChromeDriverManager
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -51,7 +51,7 @@ for record in records:
         driver.get(url)
         time.sleep(random.uniform(1, 3))  # Random delay after loading the page to imitate human behavior
         successful_connection = True
-    except TimeoutException as e:
+    except (TimeoutException, WebDriverException) as e:
         print(f"Timeout while trying to connect to {url}: {str(e)}")
 
     if not successful_connection:
