@@ -72,16 +72,13 @@ for record in records:
                 page_width = 800  # Default width
                 page_height = 600  # Default height
 
-            def sanitize_filename(filename):
-                invalid_characters = ['<', '>', ':', '"', '/', '\\', '|', '?', '*', '.', ' ']
-                for char in invalid_characters:
-                    filename = filename.replace(char, '_')
-                return filename
+            def sanitize_filename(url):
+                invalid_characters = ['<', '>', ':', '"', '/', '\\', '|', '?', '*', ' ']
+                safe_url = ''.join('_' if c in invalid_characters else c for c in url)
+                return safe_url
             
-            parsed_url = urlparse(record['Link'])
-            domain_name = parsed_url.netloc
-            safe_domain_name = sanitize_filename(domain_name)
-            screenshot_path = f"{current_date}-{record['Client']}-{safe_domain_name}.png"
+            safe_url = sanitize_filename(record['Link'])  # Use the sanitize function on the entire URL
+            screenshot_path = f"{current_date}-{record['Client']}-{safe_url}.png"
 
             driver.set_window_size(page_width, page_height)
             driver.save_screenshot(screenshot_path)
