@@ -12,6 +12,7 @@ from datetime import datetime
 import json
 import random
 import time
+from urllib.parse import urlparse
 
 
 # Google API Setup
@@ -71,7 +72,17 @@ for record in records:
                 page_width = 800  # Default width
                 page_height = 600  # Default height
 
-            screenshot_path = f"{current_date}-{record['Client']}-{record['Platform']}.png"
+            def sanitize_filename(filename):
+                invalid_characters = ['<', '>', ':', '"', '/', '\\', '|', '?', '*', '.', ' ']
+                for char in invalid_characters:
+                    filename = filename.replace(char, '_')
+                return filename
+            
+            parsed_url = urlparse(record['Link'])
+            domain_name = parsed_url.netloc
+            safe_domain_name = sanitize_filename(domain_name)
+            screenshot_path = f"{current_date}-{record['Client']}-{safe_domain_name}.png"
+
             driver.set_window_size(page_width, page_height)
             driver.save_screenshot(screenshot_path)
         except (TimeoutException, WebDriverException, InvalidArgumentException) as e:
