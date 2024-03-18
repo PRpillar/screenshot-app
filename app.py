@@ -71,7 +71,7 @@ for record in records:
                 page_width = 800  # Default width
                 page_height = 600  # Default height
 
-            screenshot_path = f"{current_date}-{record['Client']}-{record['Platform']}.png"
+            screenshot_path = f"{current_date}-{record['Client']}-{record['Link']}.png"
             driver.set_window_size(page_width, page_height)
             driver.save_screenshot(screenshot_path)
         except (TimeoutException, WebDriverException, InvalidArgumentException) as e:
