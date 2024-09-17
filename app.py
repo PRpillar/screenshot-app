@@ -14,14 +14,15 @@ import random
 import time
 from urllib.parse import urlparse
 
+
 # Google API Setup
 scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
-service_account_info = os.getenv('GOOGLE_SERVICE_ACCOUNT') or json.load(open('../credentials.json'))
+service_account_info = os.getenv('GOOGLE_SERVICE_ACCOUNT') or json.load(open('credentials.json'))
 
 if service_account_info:
     credentials = Credentials.from_service_account_info(json.loads(service_account_info), scopes=scopes)
 else:
-    credentials = Credentials.from_service_account_file('../credentials.json', scopes=scopes)
+    credentials = Credentials.from_service_account_file('credentials.json', scopes=scopes)
 
 gc = gspread.authorize(credentials)
 drive_service = build('drive', 'v3', credentials=credentials)
@@ -34,19 +35,11 @@ records = sheet.get_all_records()  # Assumes first row is header
 
 # Selenium Setup
 chrome_options = Options()
-chrome_options.add_argument("--headless")  # Run in headless mode for CI environments like GitHub Actions
-chrome_options.add_argument("--disable-gpu")  # Disable GPU acceleration
-chrome_options.add_argument("--no-sandbox")  # Avoid sandbox issues in some environments
-chrome_options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems in certain environments
+chrome_options.add_argument("--headless")
 
-try:
-    # Use ChromeDriverManager to automatically manage ChromeDriver versions
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-except WebDriverException as e:
-    print(f"Failed to initialize WebDriver: {str(e)}")
-    raise
-
+# Add any Chrome options you need here
+service = Service(ChromeDriverManager().install())
+driver = webdriver.Chrome(service=service, options=chrome_options)
 driver.maximize_window()
 
 for record in records:
@@ -65,6 +58,7 @@ for record in records:
         continue  # Skip the rest of the code in this loop iteration and move to the next record
     
     # If connection was successful, proceed with screenshot
+    # Before trying to set the window size
     if successful_connection:
         try:
             current_date = datetime.now().strftime('%Y-%m-%d')
@@ -90,6 +84,7 @@ for record in records:
         except (TimeoutException, WebDriverException, InvalidArgumentException) as e:
             print(f"Error while processing {url}: {str(e)}")
             continue  # Skip file upload for this record if there were any errors
+
 
     # Try to upload to Google Drive
     try:
