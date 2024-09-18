@@ -72,11 +72,13 @@ def is_captcha_present(driver):
 ua = UserAgent()
 user_agent = ua.random
 
-chrome_options = Options()
-chrome_options.add_argument(f'--user-agent={user_agent}')
-chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+chrome_options = uc.ChromeOptions()
+chrome_options.add_argument('--headless')  # Enable headless mode
+chrome_options.add_argument('--no-sandbox')
+chrome_options.add_argument('--disable-dev-shm-usage')
 
-driver = uc.Chrome(options=chrome_options)
+# Specify the path to the system Chrome executable
+driver = uc.Chrome(options=chrome_options, browser_executable_path='/usr/bin/google-chrome')
 driver.maximize_window()
 
 for record in records:

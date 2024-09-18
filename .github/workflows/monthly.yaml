@@ -14,10 +14,10 @@ jobs:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
 
     steps:
-      - uses: actions/checkout@v3  # Updated to latest version
+      - uses: actions/checkout@v3  # Checks out your repository
 
       - name: Set up Python
-        uses: actions/setup-python@v4  # Updated to latest version
+        uses: actions/setup-python@v4  # Sets up Python environment
         with:
           python-version: '3.9'  # Specify the Python version
 
@@ -25,17 +25,39 @@ jobs:
         run: |
           pip install -r requirements.txt  # Install dependencies
 
+      - name: Install Chrome dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3 \
+            libgconf-2-4 \
+            libxss1 \
+            libappindicator1 \
+            libindicator7 \
+            libasound2 \
+            fonts-liberation \
+            libatk-bridge2.0-0 \
+            libgtk-3-0 \
+            xdg-utils \
+            wget \
+            libgbm1 \
+            libu2f-udev \
+            libvulkan1
+
+      - name: Install Chrome
+        run: |
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt install -y ./google-chrome-stable_current_amd64.deb
+
       - name: Install language fonts
         run: |
           sudo apt-get update
           sudo apt-get install -y fonts-arphic-ukai fonts-arphic-uming \
                                 fonts-ipafont-mincho fonts-ipafont-gothic \
                                 fonts-unfonts-core fonts-noto-cjk \
-                                fonts-kacst ttf-wqy-zenhei
+                                fonts-kacst fonts-kacst-one fonts-arabeyes \
+                                fonts-sil-scheherazade ttf-wqy-zenhei
           sudo fc-cache -fv  # Refresh font cache
-
-      - name: List installed fonts
-        run: fc-list
 
       - name: Run Python Script
         run: python app.py
