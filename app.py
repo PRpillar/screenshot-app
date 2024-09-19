@@ -15,15 +15,28 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from fake_useragent import UserAgent
 from googleapiclient.errors import HttpError
+from google.oauth2 import service_account
 
 # Google API Setup
+
+# Specify the user to impersonate
+user_to_impersonate = 'a.zhubekov@prpillar.com'
+
 scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
 service_account_info = os.getenv('GOOGLE_SERVICE_ACCOUNT') or json.load(open('../credentials.json'))
 
 if service_account_info:
-    credentials = Credentials.from_service_account_info(json.loads(service_account_info), scopes=scopes)
+    credentials = service_account.Credentials.from_service_account_info(
+        json.loads(service_account_info),
+        scopes=scopes,
+        subject=user_to_impersonate
+    )
 else:
-    credentials = Credentials.from_service_account_file('../credentials.json', scopes=scopes)
+    credentials = service_account.Credentials.from_service_account_file(
+        '../credentials.json',
+        scopes=scopes,
+        subject=user_to_impersonate
+    )
 
 gc = gspread.authorize(credentials)
 drive_service = build('drive', 'v3', credentials=credentials)
