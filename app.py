@@ -1,23 +1,50 @@
+print("Starting script")
 import os
+print("Imported os")
 import time
+print("Imported time")
 import random
+print("Imported random")
 import json
+print("Imported json")
 import hashlib
+print("Imported hashlib")
 from datetime import datetime
+print("Imported datetime")
 from urllib.parse import urlparse
+print("Imported urlparse")
 from concurrent.futures import ThreadPoolExecutor, as_completed
+print("Imported ThreadPoolExecutor")
 from selenium.webdriver.support.ui import WebDriverWait
+print("Imported WebDriverWait")
 from selenium.webdriver.support import expected_conditions as EC
+print("Imported expected_conditions")
 from selenium.common.exceptions import TimeoutException, WebDriverException
+print("Imported selenium exceptions")
 from selenium.webdriver.chrome.options import Options
+print("Imported Options")
 from selenium.webdriver.common.by import By
+print("Imported By")
+from selenium.webdriver.chrome.service import Service
+print("Imported Service")
+from selenium import webdriver
+print("Imported webdriver")
+from webdriver_manager.chrome import ChromeDriverManager
+print("Imported ChromeDriverManager")
 import gspread
+print("Imported gspread")
 from google.oauth2 import service_account
+print("Imported service_account")
 from googleapiclient.discovery import build
+print("Imported googleapiclient.discovery")
 from googleapiclient.http import MediaFileUpload
+print("Imported MediaFileUpload")
 from googleapiclient.errors import HttpError
+print("Imported HttpError")
 import socket
+print("Imported socket")
 from time import sleep
+print("Imported sleep")
 
 # Import webdriver and webdriver-manager
 from selenium import webdriver
