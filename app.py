@@ -1,50 +1,26 @@
-print("Starting script")
 import os
-print("Imported os")
 import time
-print("Imported time")
 import random
-print("Imported random")
 import json
-print("Imported json")
 import hashlib
-print("Imported hashlib")
 from datetime import datetime
-print("Imported datetime")
 from urllib.parse import urlparse
-print("Imported urlparse")
 from concurrent.futures import ThreadPoolExecutor, as_completed
-print("Imported ThreadPoolExecutor")
 from selenium.webdriver.support.ui import WebDriverWait
-print("Imported WebDriverWait")
 from selenium.webdriver.support import expected_conditions as EC
-print("Imported expected_conditions")
 from selenium.common.exceptions import TimeoutException, WebDriverException
-print("Imported selenium exceptions")
 from selenium.webdriver.chrome.options import Options
-print("Imported Options")
 from selenium.webdriver.common.by import By
-print("Imported By")
-from selenium.webdriver.chrome.service import Service
-print("Imported Service")
-from selenium import webdriver
-print("Imported webdriver")
-from webdriver_manager.chrome import ChromeDriverManager
-print("Imported ChromeDriverManager")
 import gspread
-print("Imported gspread")
 from google.oauth2 import service_account
-print("Imported service_account")
 from googleapiclient.discovery import build
-print("Imported googleapiclient.discovery")
 from googleapiclient.http import MediaFileUpload
-print("Imported MediaFileUpload")
 from googleapiclient.errors import HttpError
-print("Imported HttpError")
 import socket
-print("Imported socket")
 from time import sleep
-print("Imported sleep")
+import traceback
+from google.auth.transport.requests import AuthorizedSession
+from googleapiclient.http import HttpRequest
 
 # Import webdriver and webdriver-manager
 from selenium import webdriver
@@ -74,8 +50,17 @@ else:
         subject=user_to_impersonate
     )
 
+# Create an AuthorizedSession
+authed_session = AuthorizedSession(credentials)
+
+# Create a custom Http object that uses requests
+def build_request(http, *args, **kwargs):
+    new_http = authed_session
+    return HttpRequest(new_http, *args, **kwargs)
+
+drive_service = build('drive', 'v3', credentials=credentials, requestBuilder=build_request)
+
 gc = gspread.authorize(credentials)
-drive_service = build('drive', 'v3', credentials=credentials)
 
 # Google Sheet and Drive Setup
 spreadsheet_id = '1OHzJc9hvr6tgi2ehogkfP9sZHYkI3dW1nB62JCpM9D0'
@@ -89,24 +74,28 @@ def sanitize_filename(url):
         url = 'http://' + url
 
     parsed_url = urlparse(url)
-    domain = parsed_url.netloc.replace('.', '_')
+    domain = parsed_url.netloc.replace('.', '_') if parsed_url.netloc else 'unknown_domain'
     url_hash = hashlib.md5(url.encode('utf-8')).hexdigest()
     return f"{domain}_{url_hash}"
 
 def process_record(record):
-    url = record['Link']
-    folder_id = record['Link to folder']
+    try:
+        url = record.get('Link', '')
+        folder_id = record.get('Link to folder', '')
+        client_name = record.get('Client', 'UnknownClient')
 
-    # Ensure the URL has a scheme
-    if not url.startswith(('http://', 'https://')):
-        url = 'http://' + url
+        if not url:
+            print(f"No URL provided in record: {record}")
+            return
 
-    successful_connection = False
+        if not folder_id:
+            print(f"No folder ID provided for {url}, skipping upload.")
+            return
 
-    # Check if folder_id is valid
-    if not folder_id:
-        print(f"No folder ID provided for {url}, skipping upload.")
-        return
+        # [Rest of your code]
+    except Exception as e:
+        print(f"Exception occurred while processing record: {record}")
+        traceback.print_exc()
 
     # Selenium Setup
     chrome_options = Options()
@@ -205,16 +194,19 @@ def process_record(record):
 
 # Main execution using ThreadPoolExecutor for parallel processing
 def main():
-    max_workers = min(5, len(records))  # Limit the number of workers
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_record = {executor.submit(process_record, record): record for record in records}
+    # Process records sequentially
+    for record in records:
+        process_record(record)
+        max_workers = min(5, len(records))  # Limit the number of workers
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_record = {executor.submit(process_record, record): record for record in records}
 
-        for future in as_completed(future_to_record):
-            record = future_to_record[future]
-            try:
-                future.result()
-            except Exception as e:
-                print(f"Exception occurred while processing record {record['Link']}: {e}")
+            for future in as_completed(future_to_record):
+                record = future_to_record[future]
+                try:
+                    future.result()
+                except Exception as e:
+                    print(f"Exception occurred while processing record {record['Link']}: {e}")
 
 if __name__ == "__main__":
     main()
