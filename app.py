@@ -67,13 +67,20 @@ def process_record(record):
         print(f"No folder ID provided for {url}, skipping upload.")
         return
 
-    # Selenium Setup with undetected-chromedriver
+        # Selenium Setup with undetected-chromedriver
     chrome_options = uc.ChromeOptions()
-    chrome_options.add_argument('--headless')  # Enable headless mode
+    chrome_options.add_argument('--headless')
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)")
-    driver = uc.Chrome(options=chrome_options, browser_executable_path='/usr/bin/google-chrome')
+
+    driver = uc.Chrome(
+        options=chrome_options,
+        browser_executable_path='/usr/bin/google-chrome',
+        driver_executable_path='/usr/local/bin/chromedriver',
+        use_subprocess=False
+    )
+
 
     try:
         # Attempt to access the URL with retries
