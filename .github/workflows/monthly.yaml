@@ -7,23 +7,23 @@ on:
 
 jobs:
   run-python-script:
-    runs-on: ubuntu-latest  # Specifies the runner environment
+    runs-on: ubuntu-latest
     timeout-minutes: 360
 
     env:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
 
     steps:
-      - uses: actions/checkout@v3  # Checks out your repository
+      - uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v4  # Sets up Python environment
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.9'  # Specify the Python version
+          python-version: '3.9'
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt  # Install dependencies
+          pip install -r requirements.txt
 
       - name: Install Chrome dependencies
         run: |
@@ -57,7 +57,7 @@ jobs:
                                 fonts-unfonts-core fonts-noto-cjk \
                                 fonts-kacst fonts-kacst-one fonts-arabeyes \
                                 fonts-sil-scheherazade ttf-wqy-zenhei
-          sudo fc-cache -fv  # Refresh font cache
+          sudo fc-cache -fv
 
       - name: Run Python Script
         run: python app.py
