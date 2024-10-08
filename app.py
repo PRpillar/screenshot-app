@@ -76,9 +76,9 @@ def process_record(record):
 
     driver = uc.Chrome(
         options=chrome_options,
-        browser_executable_path='/usr/bin/google-chrome',
         driver_executable_path='/usr/local/bin/chromedriver',
-        use_subprocess=False
+        browser_executable_path='/usr/bin/google-chrome',
+        version_main=116
     )
 
 

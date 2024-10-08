@@ -44,18 +44,18 @@ jobs:
             libu2f-udev \
             libvulkan1
 
-      - name: Install Chrome
+      - name: Install Google Chrome
         run: |
-          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-          sudo apt install -y ./google-chrome-stable_current_amd64.deb
+          wget https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_116.0.5845.110-1_amd64.deb
+          sudo apt install -y ./google-chrome-stable_116.0.5845.110-1_amd64.deb
 
       - name: Install Chromedriver
         run: |
-          CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+' | head -1)
+          CHROME_VERSION=116
           CHROMEDRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_VERSION")
           echo "Installing Chromedriver version: $CHROMEDRIVER_VERSION"
           wget -N https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip
-          unzip chromedriver_linux64.zip -d $HOME
+          unzip -o chromedriver_linux64.zip -d $HOME
           sudo mv -f $HOME/chromedriver /usr/local/bin/chromedriver
           sudo chmod +x /usr/local/bin/chromedriver
 
