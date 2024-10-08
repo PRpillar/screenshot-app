@@ -11,24 +11,28 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.action_chains import ActionChains
 import gspread
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
+import socket
+from time import sleep
 
 # Import webdriver and webdriver-manager
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 
-# Google API Setup
 
-# Specify the user to impersonate
+# Google API Setup
 user_to_impersonate = 'a.zhubekov@prpillar.com'
 
-scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
+scopes = [
+    'https://www.googleapis.com/auth/drive',
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive.metadata.readonly'
+]
 service_account_info = os.getenv('GOOGLE_SERVICE_ACCOUNT')
 if service_account_info:
     credentials = service_account.Credentials.from_service_account_info(
@@ -52,18 +56,24 @@ sheet_name = 'Database'
 sheet = gc.open_by_key(spreadsheet_id).worksheet(sheet_name)
 records = sheet.get_all_records()  # Assumes first row is header
 
-# Updated sanitize_filename function
 def sanitize_filename(url):
-    # Extract domain and create a hash of the URL
+    # Ensure the URL has a scheme
+    if not url.startswith(('http://', 'https://')):
+        url = 'http://' + url
+
     parsed_url = urlparse(url)
     domain = parsed_url.netloc.replace('.', '_')
     url_hash = hashlib.md5(url.encode('utf-8')).hexdigest()
     return f"{domain}_{url_hash}"
 
-# Function to process a single record
 def process_record(record):
     url = record['Link']
     folder_id = record['Link to folder']
+
+    # Ensure the URL has a scheme
+    if not url.startswith(('http://', 'https://')):
+        url = 'http://' + url
+
     successful_connection = False
 
     # Check if folder_id is valid
@@ -71,16 +81,15 @@ def process_record(record):
         print(f"No folder ID provided for {url}, skipping upload.")
         return
 
-        # Selenium Setup with undetected-chromedriver
+    # Selenium Setup
     chrome_options = Options()
     chrome_options.add_argument('--headless')  # Run in headless mode.
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)")
 
-    # Initialize the WebDriver with WebDriver Manager
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-
 
     try:
         # Attempt to access the URL with retries
@@ -124,31 +133,39 @@ def process_record(record):
             return
 
         # Try to upload to Google Drive
-        try:
-            file_metadata = {'name': os.path.basename(screenshot_path), 'parents': [folder_id]}
-            media = MediaFileUpload(screenshot_path, mimetype='image/png')
+        max_upload_retries = 3
+        for attempt in range(max_upload_retries):
+            try:
+                file_metadata = {'name': os.path.basename(screenshot_path), 'parents': [folder_id]}
+                media = MediaFileUpload(screenshot_path, mimetype='image/png', resumable=True)
 
-            # Check storage quota before uploading
-            about = drive_service.about().get(fields="storageQuota").execute()
-            used = int(about['storageQuota']['usage'])
-            total = int(about['storageQuota']['limit'])
-            if used >= total:
-                print("Drive storage quota exceeded, stopping uploads.")
-                return
+                # Check storage quota before uploading
+                about = drive_service.about().get(fields="storageQuota").execute()
+                storage_quota = about.get('storageQuota', {})
+                used = int(storage_quota.get('usage', 0))
+                total = int(storage_quota.get('limit', 0))
+                if total > 0 and used >= total:
+                    print("Drive storage quota exceeded, stopping uploads.")
+                    return
 
-            drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-            print(f"Uploaded {screenshot_path} to Google Drive.")
-        except HttpError as e:
-            if e.resp.status == 403 and 'storageQuotaExceeded' in str(e):
-                print("Google Drive storage quota exceeded, stopping uploads.")
-            elif e.resp.status == 404:
-                print(f"Folder not found for {url}: {e}")
-            else:
+                request = drive_service.files().create(body=file_metadata, media_body=media, fields='id')
+                response = None
+                while response is None:
+                    status, response = request.next_chunk()
+                print(f"Uploaded {screenshot_path} to Google Drive.")
+                break  # Break if upload is successful
+            except (HttpError, socket.timeout, socket.error) as e:
                 print(f"Failed to upload {screenshot_path} to Google Drive: {e}")
-            return
-        except Exception as e:
-            print(f"Failed to upload {screenshot_path} to Google Drive: {e}")
-            return
+                if attempt < max_upload_retries - 1:
+                    sleep_time = 2 ** attempt  # Exponential backoff
+                    print(f"Retrying upload in {sleep_time} seconds...")
+                    sleep(sleep_time)
+                else:
+                    print(f"Exceeded maximum retries for {screenshot_path}.")
+                    return
+            except KeyError as e:
+                print(f"Key error during upload: {e}")
+                return
 
         # Delete local screenshot
         try:
