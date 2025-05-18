@@ -21,6 +21,7 @@ service_account_info = os.getenv('GOOGLE_SERVICE_ACCOUNT') or json.load(open('cr
 
 if service_account_info:
     credentials = Credentials.from_service_account_info(json.loads(service_account_info), scopes=scopes)
+    print("Using service account:", credentials.service_account_email)
 else:
     credentials = Credentials.from_service_account_file('credentials.json', scopes=scopes)
 
