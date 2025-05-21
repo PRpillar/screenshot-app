@@ -86,6 +86,14 @@ for record in records:
             print(f"Error while processing {url}: {str(e)}")
             continue  # Skip file upload for this record if there were any errors
 
+    try:
+        folder = drive_service.files().get(fileId=folder_id, fields='driveId, name').execute()
+        if 'driveId' in folder:
+            print(f"✅ Uploading to Shared Drive: {folder['name']}")
+        else:
+            print(f"⚠️ Uploading to a regular My Drive folder (uses service account quota): {folder['name']}")
+    except Exception as e:
+        print(f"⚠️ Failed to check folder drive type: {str(e)}")
 
     # Try to upload to Google Drive
     try:
