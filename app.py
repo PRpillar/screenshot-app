@@ -88,6 +88,33 @@ for record in records:
 
     try:
         folder = drive_service.files().get(fileId=folder_id, fields='driveId, name').execute()
+        # Check the service account's Drive quota
+        try:
+            about_info = drive_service.about().get(fields='storageQuota').execute()
+            quota = about_info.get('storageQuota', {})
+
+            def format_bytes(size):
+                # Helper function to convert bytes to readable format
+                for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+                    if size < 1024.0:
+                        return f"{size:.2f} {unit}"
+                    size /= 1024.0
+                return f"{size:.2f} PB"
+
+            limit = int(quota.get('limit', '0'))
+            usage = int(quota.get('usage', '0'))
+            usage_in_drive = int(quota.get('usageInDrive', '0'))
+            usage_in_trash = int(quota.get('usageInDriveTrash', '0'))
+
+            print("\n📊 Service Account Storage Quota:")
+            print(f"• Total Quota Limit      : {format_bytes(limit)}")
+            print(f"• Total Used             : {format_bytes(usage)}")
+            print(f"• Used in Drive          : {format_bytes(usage_in_drive)}")
+            print(f"• Used in Drive Trash    : {format_bytes(usage_in_trash)}\n")
+
+        except Exception as e:
+            print(f"⚠️ Failed to fetch storage quota: {e}")
+
         if 'driveId' in folder:
             print(f"✅ Uploading to Shared Drive: {folder['name']}")
         else:
