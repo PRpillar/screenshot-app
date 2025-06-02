@@ -17,13 +17,21 @@ from urllib.parse import urlparse
 
 # Google API Setup
 scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
-service_account_info = os.getenv('GOOGLE_SERVICE_ACCOUNT') or json.load(open('credentials.json'))
+from google.oauth2 import service_account
 
-if service_account_info:
-    credentials = Credentials.from_service_account_info(json.loads(service_account_info), scopes=scopes)
-    print("Using service account:", credentials.service_account_email)
-else:
-    credentials = Credentials.from_service_account_file('credentials.json', scopes=scopes)
+DELEGATED_USER = 'y.kuanysh@prpillar.com'
+
+SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
+
+# Load credentials and impersonate the delegated user
+credentials = service_account.Credentials.from_service_account_file(
+    'credentials.json',
+    scopes=SCOPES,
+    subject=DELEGATED_USER
+)
+
+print("Using impersonated Workspace user:", DELEGATED_USER)
+
 
 gc = gspread.authorize(credentials)
 drive_service = build('drive', 'v3', credentials=credentials)
