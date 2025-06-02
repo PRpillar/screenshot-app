@@ -24,11 +24,21 @@ DELEGATED_USER = 'y.kuanysh@prpillar.com'
 SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
 
 # Load credentials and impersonate the delegated user
-credentials = service_account.Credentials.from_service_account_file(
-    'credentials.json',
+DELEGATED_USER = 'y.kuanysh@prpillar.com'  # Your Workspace user email
+SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
+
+# Load service account credentials from GitHub Actions secret
+service_account_info = os.environ.get("GOOGLE_SERVICE_ACCOUNT")
+if not service_account_info:
+    raise ValueError("Missing GOOGLE_SERVICE_ACCOUNT secret")
+
+# Parse and build the credentials with impersonation
+credentials = service_account.Credentials.from_service_account_info(
+    json.loads(service_account_info),
     scopes=SCOPES,
     subject=DELEGATED_USER
 )
+
 
 print("Using impersonated Workspace user:", DELEGATED_USER)
 
