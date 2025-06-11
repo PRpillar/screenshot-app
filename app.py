@@ -71,8 +71,8 @@ class ScreenshotAutomation:
             chrome_options.add_argument("--disable-gpu")
             chrome_options.add_argument("--disable-extensions")
             chrome_options.add_argument("--disable-plugins")
-            chrome_options.add_argument("--disable-images")  # Faster loading
-            chrome_options.add_argument("--disable-javascript")  # Optional: faster but may affect some sites
+            # chrome_options.add_argument("--disable-images")  # Faster loading
+            # chrome_options.add_argument("--disable-javascript")  # Optional: faster but may affect some sites
             
             # Timeout settings
             chrome_options.add_argument("--page-load-strategy=eager")  # Don't wait for all resources
