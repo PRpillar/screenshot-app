@@ -14,13 +14,16 @@ import random
 import time
 from urllib.parse import urlparse
 import logging
+import argparse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-class ScreenshotAutomation:
-    def __init__(self):
+class BatchScreenshotAutomation:
+    def __init__(self, start_row=0, batch_size=500):
+        self.start_row = start_row
+        self.batch_size = batch_size
         self.setup_google_services()
         self.setup_selenium_driver()
         
@@ -51,9 +54,20 @@ class ScreenshotAutomation:
             
             # Get spreadsheet data
             sheet = self.gc.open_by_key(self.SPREADSHEET_ID).worksheet(self.SHEET_NAME)
-            self.records = sheet.get_all_records()
+            all_records = sheet.get_all_records()
             
-            logger.info(f"Successfully loaded {len(self.records)} records from spreadsheet")
+            # Calculate batch boundaries
+            total_records = len(all_records)
+            end_row = min(self.start_row + self.batch_size, total_records)
+            
+            # Get batch records
+            self.records = all_records[self.start_row:end_row]
+            self.total_records = total_records
+            self.end_row = end_row
+            
+            logger.info(f"Total records in sheet: {total_records}")
+            logger.info(f"Processing batch: rows {self.start_row} to {end_row-1}")
+            logger.info(f"Batch contains {len(self.records)} records")
             
         except Exception as e:
             logger.error(f"Failed to setup Google services: {str(e)}")
@@ -71,18 +85,16 @@ class ScreenshotAutomation:
             chrome_options.add_argument("--disable-gpu")
             chrome_options.add_argument("--disable-extensions")
             chrome_options.add_argument("--disable-plugins")
-            # chrome_options.add_argument("--disable-images")  # Faster loading
-            # chrome_options.add_argument("--disable-javascript")  # Optional: faster but may affect some sites
             
             # Timeout settings
-            chrome_options.add_argument("--page-load-strategy=eager")  # Don't wait for all resources
+            chrome_options.add_argument("--page-load-strategy=eager")
             
             service = Service(ChromeDriverManager().install())
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
             
-            # Set timeouts - THIS FIXES YOUR TIMEOUT ISSUES
-            self.driver.set_page_load_timeout(30)  # 30 seconds max for page load
-            self.driver.implicitly_wait(10)  # 10 seconds for element finding
+            # Set timeouts
+            self.driver.set_page_load_timeout(30)
+            self.driver.implicitly_wait(10)
             
             logger.info("Selenium driver initialized successfully")
             
@@ -133,7 +145,7 @@ class ScreenshotAutomation:
                 
                 # Limit maximum dimensions to prevent memory issues
                 page_width = min(page_width, 1920)
-                page_height = min(page_height, 10000)  # Reasonable max for long pages
+                page_height = min(page_height, 10000)
                 
                 # Set window size and take screenshot
                 self.driver.set_window_size(page_width, page_height)
@@ -208,23 +220,25 @@ class ScreenshotAutomation:
         except Exception as e:
             logger.error(f"Failed to delete {file_path}: {str(e)}")
     
-    def process_all_records(self):
-        """Main processing loop with comprehensive error handling"""
+    def process_batch(self):
+        """Process the current batch of records"""
         successful_count = 0
         failed_count = 0
         
-        logger.info(f"Starting to process {len(self.records)} records")
+        logger.info(f"Starting batch processing from row {self.start_row}")
+        logger.info(f"Processing {len(self.records)} records in this batch")
         
-        for i, record in enumerate(self.records, 1):
+        for i, record in enumerate(self.records):
+            current_row = self.start_row + i
             url = record.get('Link', '').strip()
             folder_id = record.get('Link to folder', '').strip()
             client_name = record.get('Client', 'Unknown').strip()
             
-            logger.info(f"Processing record {i}/{len(self.records)}: {client_name} - {url}")
+            logger.info(f"Processing row {current_row + 1}: {client_name} - {url}")
             
             # Validate required fields
             if not url or not folder_id:
-                logger.warning(f"Skipping record {i}: Missing URL or folder ID")
+                logger.warning(f"Skipping row {current_row + 1}: Missing URL or folder ID")
                 failed_count += 1
                 continue
             
@@ -232,11 +246,11 @@ class ScreenshotAutomation:
             try:
                 parsed = urlparse(url)
                 if not parsed.scheme or not parsed.netloc:
-                    logger.warning(f"Skipping record {i}: Invalid URL format: {url}")
+                    logger.warning(f"Skipping row {current_row + 1}: Invalid URL format: {url}")
                     failed_count += 1
                     continue
             except Exception:
-                logger.warning(f"Skipping record {i}: Could not parse URL: {url}")
+                logger.warning(f"Skipping row {current_row + 1}: Could not parse URL: {url}")
                 failed_count += 1
                 continue
             
@@ -259,8 +273,30 @@ class ScreenshotAutomation:
             # Add delay between requests to be respectful
             time.sleep(random.uniform(1, 2))
         
-        logger.info(f"Processing complete. Successful: {successful_count}, Failed: {failed_count}")
-        return successful_count, failed_count
+        # Determine if processing is complete
+        is_complete = self.end_row >= self.total_records
+        next_start_row = self.end_row if not is_complete else 0
+        
+        # Save batch results
+        batch_results = {
+            'start_row': self.start_row,
+            'end_row': self.end_row,
+            'successful': successful_count,
+            'failed': failed_count,
+            'total_in_batch': len(self.records),
+            'is_complete': is_complete,
+            'next_start_row': next_start_row,
+            'total_records': self.total_records
+        }
+        
+        with open('batch_results.json', 'w') as f:
+            json.dump(batch_results, f, indent=2)
+        
+        logger.info(f"Batch processing complete. Successful: {successful_count}, Failed: {failed_count}")
+        logger.info(f"Processing complete: {is_complete}")
+        logger.info(f"Next start row: {next_start_row}")
+        
+        return successful_count, failed_count, is_complete
     
     def cleanup(self):
         """Clean up resources"""
@@ -272,19 +308,39 @@ class ScreenshotAutomation:
             logger.error(f"Error during cleanup: {str(e)}")
 
 def main():
-    """Main execution function"""
+    """Main execution function with command line arguments"""
+    parser = argparse.ArgumentParser(description='Batch Screenshot Automation')
+    parser.add_argument('--start-row', type=int, default=0, help='Starting row number (0-based)')
+    parser.add_argument('--batch-size', type=int, default=500, help='Number of rows to process in this batch')
+    
+    args = parser.parse_args()
+    
     automation = None
     try:
-        automation = ScreenshotAutomation()
-        successful, failed = automation.process_all_records()
+        automation = BatchScreenshotAutomation(start_row=args.start_row, batch_size=args.batch_size)
+        successful, failed, is_complete = automation.process_batch()
         
-        print(f"\n=== SUMMARY ===")
+        print(f"\n=== BATCH SUMMARY ===")
+        print(f"Batch: rows {args.start_row} to {args.start_row + args.batch_size - 1}")
         print(f"Successful: {successful}")
         print(f"Failed: {failed}")
-        print(f"Total processed: {successful + failed}")
+        print(f"Processing complete: {is_complete}")
         
     except Exception as e:
         logger.error(f"Fatal error: {str(e)}")
+        # Create error results file
+        error_results = {
+            'start_row': args.start_row,
+            'end_row': args.start_row,
+            'successful': 0,
+            'failed': 0,
+            'total_in_batch': 0,
+            'is_complete': False,
+            'next_start_row': args.start_row,
+            'error': str(e)
+        }
+        with open('batch_results.json', 'w') as f:
+            json.dump(error_results, f, indent=2)
         raise
     finally:
         if automation:
