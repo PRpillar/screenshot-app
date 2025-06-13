@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 class BatchScreenshotAutomation:
-    def __init__(self, start_row=0, batch_size=500):
+    def __init__(self, start_row=0, batch_size=50):
         self.start_row = start_row
         self.batch_size = batch_size
         self.setup_google_services()
@@ -85,6 +85,11 @@ class BatchScreenshotAutomation:
             chrome_options.add_argument("--disable-gpu")
             chrome_options.add_argument("--disable-extensions")
             chrome_options.add_argument("--disable-plugins")
+            chrome_options.add_argument("--memory-pressure-off")
+            chrome_options.add_argument("--max_old_space_size=4096")
+            chrome_options.add_argument("--disable-background-timer-throttling")
+            chrome_options.add_argument("--disable-renderer-backgrounding")
+            chrome_options.add_argument("--disable-backgrounding-occluded-windows")
             
             # Timeout settings
             chrome_options.add_argument("--page-load-strategy=eager")
@@ -236,6 +241,14 @@ class BatchScreenshotAutomation:
             
             logger.info(f"Processing row {current_row + 1}: {client_name} - {url}")
             
+            # Restart driver periodically to prevent degradation
+            if i > 0 and i % 150 == 0:
+                self.restart_driver()
+            
+            # Clear browser data every 10 requests
+            if i > 0 and i % 100 == 0:
+                self.clear_browser_data()
+
             # Validate required fields
             if not url or not folder_id:
                 logger.warning(f"Skipping row {current_row + 1}: Missing URL or folder ID")
@@ -307,11 +320,36 @@ class BatchScreenshotAutomation:
         except Exception as e:
             logger.error(f"Error during cleanup: {str(e)}")
 
+    def restart_driver(self):
+        """Restart the driver to prevent resource issues"""
+        try:
+            logger.info("Restarting Selenium driver...")
+            self.driver.quit()
+            time.sleep(3)  # Give time for cleanup
+            self.setup_selenium_driver()
+            logger.info("Driver restarted successfully")
+        except Exception as e:
+            logger.error(f"Error restarting driver: {str(e)}")
+            # Try to force setup new driver
+            self.setup_selenium_driver()
+
+    def clear_browser_data(self):
+        """Clear browser cache and cookies"""
+        try:
+            self.driver.delete_all_cookies()
+            self.driver.execute_script("window.localStorage.clear();")
+            self.driver.execute_script("window.sessionStorage.clear();")
+            # Navigate to blank page to clear any loaded content
+            self.driver.get("about:blank")
+            logger.debug("Cleared browser data")
+        except Exception as e:
+            logger.warning(f"Could not clear browser data: {e}")
+
 def main():
     """Main execution function with command line arguments"""
     parser = argparse.ArgumentParser(description='Batch Screenshot Automation')
     parser.add_argument('--start-row', type=int, default=0, help='Starting row number (0-based)')
-    parser.add_argument('--batch-size', type=int, default=500, help='Number of rows to process in this batch')
+    parser.add_argument('--batch-size', type=int, default=50, help='Number of rows to process in this batch')
     
     args = parser.parse_args()
     
