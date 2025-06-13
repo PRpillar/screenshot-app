@@ -126,14 +126,14 @@ jobs:
           echo "=== Batch Processing Summary ==="
           if [[ -f "batch_results.json" ]]; then
             python -c "
-            import json
-            with open('batch_results.json', 'r') as f:
-                data = json.load(f)
-            print(f'Processed rows: {data.get(\"start_row\", 0)} to {data.get(\"end_row\", 0)}')
-            print(f'Successful screenshots: {data.get(\"successful\", 0)}')
-            print(f'Failed screenshots: {data.get(\"failed\", 0)}')
-            print(f'Processing complete: {data.get(\"is_complete\", False)}')
-            print(f'Next start row: {data.get(\"next_start_row\", 0)}')
+          import json
+          with open('batch_results.json', 'r') as f:
+            data = json.load(f)
+          print(f'Processed rows: {data.get(\"start_row\", 0)} to {data.get(\"end_row\", 0)}')
+          print(f'Successful screenshots: {data.get(\"successful\", 0)}')
+          print(f'Failed screenshots: {data.get(\"failed\", 0)}')
+          print(f'Processing complete: {data.get(\"is_complete\", False)}')
+          print(f'Next start row: {data.get(\"next_start_row\", 0)}')
             "
           else
             echo "No results available"
