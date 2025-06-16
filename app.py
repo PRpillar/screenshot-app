@@ -42,6 +42,9 @@ service = Service(ChromeDriverManager().install())
 driver = webdriver.Chrome(service=service, options=chrome_options)
 driver.maximize_window()
 
+driver.set_page_load_timeout(15)
+driver.implicitly_wait(5)
+
 for record in records:
     url = record['Link']
     folder_id = record['Link to folder']
@@ -68,7 +71,12 @@ for record in records:
 
         def sanitize_filename(url):
             invalid_characters = ['<', '>', ':', '"', '/', '\\', '|', '?', '*', ' ']
-            return ''.join('_' if c in invalid_characters else c for c in url)
+            safe_text = ''.join('_' if c in invalid_characters else c for c in url)
+        
+            if len(safe_text) > max_length:
+                safe_text = safe_text[:max_length]
+        
+            return safe_text
 
         safe_url = sanitize_filename(record['Link'])
         screenshot_path = f"{current_date}-{record['Client']}-{safe_url}.png"
