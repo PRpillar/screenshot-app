@@ -1,140 +1,32 @@
-name: Monthly Screenshot Automation
+name: monthly
 
 on:
   schedule:
-    - cron: "0 6 1 * *"  # Start of month at 6AM
-    - cron: "0 6 * * 1"  # Every Monday at 6AM (for continuation runs)
+    - cron: "0 6 1 * *"  # Scheduled to run at 6AM on 1st day of every month
   workflow_dispatch:
-    inputs:
-      force_reset:
-        description: 'Force reset to start from beginning'
-        required: false
-        default: 'false'
-        type: boolean
 
 jobs:
-  run-batch:
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write  # Required to update variables
-      contents: read
+  run-python-script:
+    runs-on: ubuntu-latest  # Specifies the runner environment
+
     env:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
+
     steps:
-      - uses: actions/checkout@v4
-      
+      - uses: actions/checkout@v2  # Checks-out your repository
+
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v2  # Sets up Python environment
         with:
-          python-version: '3.9'
-      
+          python-version: '3.9'  # Specify the Python version
+
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          pip install requests  # For GitHub API calls
-      
+          pip install -r requirements.txt  # Install dependencies
       - name: Setup Chrome
         uses: browser-actions/setup-chrome@latest
         with:
-          chrome-version: stable
-      
-      - name: Get current batch info
-        id: batch_info
-        run: |
-          # Get current row from GitHub variables
-          CURRENT_ROW="${{ vars.CURRENT_BATCH_ROW }}"
-          LAST_RUN_MONTH="${{ vars.LAST_RUN_MONTH }}"
-          CURRENT_MONTH=$(date +%Y-%m)
-          FORCE_RESET="${{ inputs.force_reset }}"
-          
-          # Reset if it's a new month or force reset
-          if [[ "$LAST_RUN_MONTH" != "$CURRENT_MONTH" ]] || [[ "$FORCE_RESET" == "true" ]]; then
-            echo "New month detected or force reset. Starting from beginning."
-            echo "current_row=0" >> $GITHUB_OUTPUT
-            echo "is_new_month=true" >> $GITHUB_OUTPUT
-          else
-            echo "Continuing from row: ${CURRENT_ROW:-0}"
-            echo "current_row=${CURRENT_ROW:-0}" >> $GITHUB_OUTPUT
-            echo "is_new_month=false" >> $GITHUB_OUTPUT
-          fi
-          
-          echo "current_month=$CURRENT_MONTH" >> $GITHUB_OUTPUT
-      
+          chrome-version: stable  # Installs the stable version of Chrome      
+
       - name: Run Python Script
-        id: run_script
-        run: |
-          python app.py \
-            --start-row ${{ steps.batch_info.outputs.current_row }} \
-            --batch-size 500
-      
-      - name: Update GitHub Variables
-        if: always()
-        run: |
-          # Read the output from the Python script
-          if [[ -f "batch_results.json" ]]; then
-            NEXT_ROW=$(python -c "
-            import json
-            with open('batch_results.json', 'r') as f:
-                data = json.load(f)
-            print(data.get('next_start_row', 0))
-            ")
-            
-            IS_COMPLETE=$(python -c "
-            import json
-            with open('batch_results.json', 'r') as f:
-                data = json.load(f)
-            print('true' if data.get('is_complete', False) else 'false')
-            ")
-            
-            # Update GitHub repository variables
-            curl -X PATCH \
-              -H "Accept: application/vnd.github+json" \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              https://api.github.com/repos/${{ github.repository }}/actions/variables/CURRENT_BATCH_ROW \
-              -d "{\"name\":\"CURRENT_BATCH_ROW\",\"value\":\"$NEXT_ROW\"}"
-            
-            curl -X PATCH \
-              -H "Accept: application/vnd.github+json" \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              https://api.github.com/repos/${{ github.repository }}/actions/variables/LAST_RUN_MONTH \
-              -d "{\"name\":\"LAST_RUN_MONTH\",\"value\":\"${{ steps.batch_info.outputs.current_month }}\"}"
-            
-            echo "Updated CURRENT_BATCH_ROW to: $NEXT_ROW"
-            echo "Is processing complete: $IS_COMPLETE"
-            
-            # Trigger next batch if not complete and not a new month start
-            if [[ "$IS_COMPLETE" == "false" ]] && [[ "${{ steps.batch_info.outputs.is_new_month }}" == "false" ]]; then
-              echo "Triggering next batch..."
-              curl -X POST \
-                -H "Accept: application/vnd.github+json" \
-                -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                https://api.github.com/repos/${{ github.repository }}/actions/workflows/monthly.yml/dispatches \
-                -d '{"ref":"main"}'
-            fi
-          else
-            echo "No batch results file found"
-          fi
-      
-      - name: Summary
-        if: always()
-        run: |
-          echo "=== Batch Processing Summary ==="
-          if [[ -f "batch_results.json" ]]; then
-            python3 -c "
-          import json
-          with open('batch_results.json', 'r') as f:
-              data = json.load(f)
-          print('Processed rows: {} to {}'.format(data.get('start_row', 0), data.get('end_row', 0)))
-          print('Successful screenshots: {}'.format(data.get('successful', 0)))
-          print('Failed screenshots: {}'.format(data.get('failed', 0)))
-          print('Processing complete: {}'.format(data.get('is_complete', False)))
-          print('Next start row: {}'.format(data.get('next_start_row', 0)))
-          "
-          else
-            echo "No results available"
-          fi
+        run: python app.py
