@@ -70,6 +70,7 @@ for record in records:
             page_height = 600
 
         def sanitize_filename(url):
+            max_length = 150
             invalid_characters = ['<', '>', ':', '"', '/', '\\', '|', '?', '*', ' ']
             safe_text = ''.join('_' if c in invalid_characters else c for c in url)
         
