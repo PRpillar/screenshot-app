@@ -36,7 +36,7 @@ jobs:
         continue-on-error: true  # Don't fail job on non-zero exit
 
       - name: Trigger Another Run if Needed
-        if: steps.run-script.outcome == 'failure' && steps.run-script.conclusion == 'success'
+        if: steps.run-script.outcome == 'failure'
         run: |
           echo "Re-dispatching the workflow..."
           curl -X POST \
