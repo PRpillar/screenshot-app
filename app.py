@@ -18,10 +18,12 @@ def main():
     # Google API Setup
     DELEGATED_USER = 'y.kuanysh@prpillar.com'
     SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
+    print(f"Logging in as delegated user: {DELEGATED_USER}...")
 
     service_account_info = os.environ.get("GOOGLE_SERVICE_ACCOUNT")
     if not service_account_info:
         raise ValueError("Missing GOOGLE_SERVICE_ACCOUNT secret")
+
 
     credentials = Credentials.from_service_account_info(
         json.loads(service_account_info),
@@ -32,6 +34,9 @@ def main():
     gc = gspread.authorize(credentials)
     drive_service = build('drive', 'v3', credentials=credentials)
 
+    print("Done.")
+    
+    print("Accessing spreadsheet data...")
     # Spreadsheet setup
     spreadsheet_id = '1OHzJc9hvr6tgi2ehogkfP9sZHYkI3dW1nB62JCpM9D0'
     
@@ -43,6 +48,7 @@ def main():
     sheet_name = 'Configurations'
     config_sheet = gc.open_by_key(spreadsheet_id).worksheet(sheet_name)
 
+    print("Reading config sheet contents...")
     # Read configs from the sheet
     start_row = config_sheet.acell("B2").value
     if start_row is None or start_row.strip() == "" or not start_row.strip().isdigit():
@@ -57,6 +63,9 @@ def main():
         raise ValueError("Invalid batch size in B1")
     batch_size = int(batch_size.strip())
     
+    print("Done.")
+
+    print("Calculating batch size...")
     # Select batch rows
     all_records = sheet.get_all_records()
     total_rows = len(all_records)
@@ -68,13 +77,15 @@ def main():
         print(f"WARNING: start row ({start_row}) exceeds total rows ({total_rows}). Nothing to process")
         config_sheet.update("B2", "0")
         return True
+    print("Done.")
 
-    print(f"Processing batch: rows {start_row} to {end_row - 1}")
     batch_records = all_records[start_row:end_row]
+    print(f"Processing batch: rows {start_row} to {end_row - 1}")
 
     # For debugging
     status_results = []
 
+    print("Preparing Selenium...")
     # Selenium setup
     chrome_options = Options()
     # Selenium arguments
@@ -91,7 +102,10 @@ def main():
     driver.set_page_load_timeout(30)
     driver.implicitly_wait(10)
 
-    for record in batch_records:
+    print("Done.")
+    print("Beginning data parsing.")
+
+    for index, record in enumerate(batch_records):
         url = record['Link']
         folder_id = record['Link to folder']
         status = ""
@@ -146,12 +160,17 @@ def main():
             print(f"Failed to delete local screenshot {screenshot_path}: {str(e)}")
 
         status_results.append(["True"]) # if all went well
+        if index % 10 == 0:
+            print(f"Processed {index + 1} rows")
 
     driver.quit()
+    print("Finished parsing the batch")
 
     # Write status results to column F (Status) in 'Database' sheet
+    print("Updating status column in 'Database' sheet...")
     status_cell_range = f"F{start_row + 2}:F{end_row + 1}" # +2 for 1-based index + header
     sheet.update(status_cell_range, status_results)
+    print("Done.")
 
     # Update next start row in Configurations!B2
     config_sheet.update("B2", str(end_row))
