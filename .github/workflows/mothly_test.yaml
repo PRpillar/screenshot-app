@@ -1,0 +1,46 @@
+name: monthly_test
+
+on:
+  schedule:
+    - cron: "0 6 1 * *"  # Run monthly_test
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  run-python-script:
+    runs-on: ubuntu-latest
+
+    env:
+      GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@latest
+        with:
+          chrome-version: stable
+
+      - name: Run Python Script
+        id: run-script
+        run: |
+          python app.py
+        continue-on-error: true  # Don't fail job on non-zero exit
+
+      - name: Trigger Another Run if Needed
+        if: steps.run-script.outcome == 'failure' && steps.run-script.conclusion == 'success'
+        run: |
+          echo "Re-dispatching the workflow..."
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/monthly_test.yaml/dispatches \
+            -d '{"ref":"main"}'
