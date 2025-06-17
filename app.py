@@ -13,376 +13,172 @@ import json
 import random
 import time
 from urllib.parse import urlparse
-import logging
-import argparse
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-class BatchScreenshotAutomation:
-    def __init__(self, start_row=0, batch_size=50):
-        self.start_row = start_row
-        self.batch_size = batch_size
-        self.setup_google_services()
-        self.setup_selenium_driver()
-        
-    def setup_google_services(self):
-        """Initialize Google API services with proper error handling"""
-        try:
-            # Constants
-            self.DELEGATED_USER = 'y.kuanysh@prpillar.com'
-            self.SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
-            self.SPREADSHEET_ID = '1OHzJc9hvr6tgi2ehogkfP9sZHYkI3dW1nB62JCpM9D0'
-            self.SHEET_NAME = 'Database'
-            
-            # Get service account credentials
-            service_account_info = os.environ.get("GOOGLE_SERVICE_ACCOUNT")
-            if not service_account_info:
-                raise ValueError("Missing GOOGLE_SERVICE_ACCOUNT environment variable")
-            
-            # Setup credentials
-            credentials = Credentials.from_service_account_info(
-                json.loads(service_account_info),
-                scopes=self.SCOPES,
-                subject=self.DELEGATED_USER
-            )
-            
-            # Initialize services
-            self.gc = gspread.authorize(credentials)
-            self.drive_service = build('drive', 'v3', credentials=credentials)
-            
-            # Get spreadsheet data
-            sheet = self.gc.open_by_key(self.SPREADSHEET_ID).worksheet(self.SHEET_NAME)
-            all_records = sheet.get_all_records()
-            
-            # Calculate batch boundaries
-            total_records = len(all_records)
-            end_row = min(self.start_row + self.batch_size, total_records)
-            
-            # Get batch records
-            self.records = all_records[self.start_row:end_row]
-            self.total_records = total_records
-            self.end_row = end_row
-            
-            logger.info(f"Total records in sheet: {total_records}")
-            logger.info(f"Processing batch: rows {self.start_row} to {end_row-1}")
-            logger.info(f"Batch contains {len(self.records)} records")
-            
-        except Exception as e:
-            logger.error(f"Failed to setup Google services: {str(e)}")
-            raise
-    
-    def setup_selenium_driver(self):
-        """Initialize Selenium driver with timeout and performance optimizations"""
-        try:
-            chrome_options = Options()
-            
-            # Performance optimizations
-            chrome_options.add_argument("--headless")
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument("--disable-gpu")
-            chrome_options.add_argument("--disable-extensions")
-            chrome_options.add_argument("--disable-plugins")
-            chrome_options.add_argument("--memory-pressure-off")
-            chrome_options.add_argument("--max_old_space_size=4096")
-            chrome_options.add_argument("--disable-background-timer-throttling")
-            chrome_options.add_argument("--disable-renderer-backgrounding")
-            chrome_options.add_argument("--disable-backgrounding-occluded-windows")
-            
-            # Timeout settings
-            chrome_options.add_argument("--page-load-strategy=eager")
-            
-            service = Service(ChromeDriverManager().install())
-            self.driver = webdriver.Chrome(service=service, options=chrome_options)
-            
-            # Set timeouts
-            self.driver.set_page_load_timeout(30)
-            self.driver.implicitly_wait(10)
-            
-            logger.info("Selenium driver initialized successfully")
-            
-        except Exception as e:
-            logger.error(f"Failed to setup Selenium driver: {str(e)}")
-            raise
-    
-    def sanitize_filename(self, text, max_length=100):
-        """Create safe filename from URL or text"""
-        invalid_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*', ' ', '#', '%']
-        safe_text = ''.join('_' if c in invalid_chars else c for c in text)
-        
-        # Remove consecutive underscores and trim
-        safe_text = '_'.join(filter(None, safe_text.split('_')))
-        
-        if len(safe_text) > max_length:
-            safe_text = safe_text[:max_length]
-            
-        return safe_text
-    
-    def take_screenshot(self, url, client_name):
-        """Take screenshot with proper error handling and retries"""
-        max_retries = 3
-        retry_delay = 2
-        
-        for attempt in range(max_retries):
-            try:
-                logger.info(f"Attempting to load {url} (attempt {attempt + 1}/{max_retries})")
-                
-                # Navigate to URL with timeout handling
-                self.driver.get(url)
-                
-                # Wait for page to load with random delay
-                time.sleep(random.uniform(2, 4))
-                
-                # Get page dimensions with fallbacks
-                try:
-                    page_width = self.driver.execute_script('return Math.max(document.body.scrollWidth, document.documentElement.scrollWidth)')
-                    page_height = self.driver.execute_script('return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)')
-                except Exception:
-                    page_width = page_height = None
-                
-                # Set reasonable defaults if dimensions can't be determined
-                if not page_width or page_width <= 0:
-                    page_width = 1920
-                if not page_height or page_height <= 0:
-                    page_height = 1080
-                
-                # Limit maximum dimensions to prevent memory issues
-                page_width = min(page_width, 1920)
-                page_height = min(page_height, 10000)
-                
-                # Set window size and take screenshot
-                self.driver.set_window_size(page_width, page_height)
-                
-                # Generate filename
-                current_date = datetime.now().strftime('%Y-%m-%d')
-                safe_url = self.sanitize_filename(url)
-                screenshot_path = f"{current_date}-{client_name}-{safe_url}.png"
-                
-                # Take screenshot
-                self.driver.save_screenshot(screenshot_path)
-                logger.info(f"Screenshot saved: {screenshot_path}")
-                
-                return screenshot_path
-                
-            except TimeoutException:
-                logger.warning(f"Timeout on attempt {attempt + 1} for {url}")
-                if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
-                    continue
-                else:
-                    logger.error(f"Failed to load {url} after {max_retries} attempts")
-                    return None
-                    
-            except (WebDriverException, InvalidArgumentException) as e:
-                logger.error(f"WebDriver error on {url}: {str(e)}")
-                if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
-                    continue
-                else:
-                    return None
-                    
-            except Exception as e:
-                logger.error(f"Unexpected error taking screenshot of {url}: {str(e)}")
-                return None
-        
-        return None
-    
-    def upload_to_drive(self, file_path, folder_id):
-        """Upload file to Google Drive with error handling"""
-        try:
-            # Verify folder exists
-            try:
-                folder = self.drive_service.files().get(fileId=folder_id, fields='name').execute()
-                logger.info(f"Uploading to folder: {folder.get('name', 'Unknown')}")
-            except Exception as e:
-                logger.warning(f"Could not verify folder {folder_id}: {str(e)}")
-            
-            # Upload file
-            file_metadata = {'name': os.path.basename(file_path), 'parents': [folder_id]}
-            media = MediaFileUpload(file_path, mimetype='image/png')
-            
-            result = self.drive_service.files().create(
-                body=file_metadata,
-                media_body=media,
-                fields='id'
-            ).execute()
-            
-            logger.info(f"Successfully uploaded {file_path} to Google Drive (ID: {result.get('id')})")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to upload {file_path} to Google Drive: {str(e)}")
-            return False
-    
-    def cleanup_file(self, file_path):
-        """Remove local file with error handling"""
-        try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-                logger.info(f"Deleted local file: {file_path}")
-        except Exception as e:
-            logger.error(f"Failed to delete {file_path}: {str(e)}")
-    
-    def process_batch(self):
-        """Process the current batch of records"""
-        successful_count = 0
-        failed_count = 0
-        
-        logger.info(f"Starting batch processing from row {self.start_row}")
-        logger.info(f"Processing {len(self.records)} records in this batch")
-        
-        for i, record in enumerate(self.records):
-            current_row = self.start_row + i
-            url = record.get('Link', '').strip()
-            folder_id = record.get('Link to folder', '').strip()
-            client_name = record.get('Client', 'Unknown').strip()
-            
-            logger.info(f"Processing row {current_row + 1}: {client_name} - {url}")
-            
-            # Restart driver periodically to prevent degradation
-            if i > 0 and i % 150 == 0:
-                self.restart_driver()
-            
-            # Clear browser data every 10 requests
-            if i > 0 and i % 100 == 0:
-                self.clear_browser_data()
-
-            # Validate required fields
-            if not url or not folder_id:
-                logger.warning(f"Skipping row {current_row + 1}: Missing URL or folder ID")
-                failed_count += 1
-                continue
-            
-            # Validate URL format
-            try:
-                parsed = urlparse(url)
-                if not parsed.scheme or not parsed.netloc:
-                    logger.warning(f"Skipping row {current_row + 1}: Invalid URL format: {url}")
-                    failed_count += 1
-                    continue
-            except Exception:
-                logger.warning(f"Skipping row {current_row + 1}: Could not parse URL: {url}")
-                failed_count += 1
-                continue
-            
-            # Take screenshot
-            screenshot_path = self.take_screenshot(url, client_name)
-            
-            if screenshot_path:
-                # Upload to Drive
-                if self.upload_to_drive(screenshot_path, folder_id):
-                    successful_count += 1
-                else:
-                    failed_count += 1
-                
-                # Clean up local file
-                self.cleanup_file(screenshot_path)
-            else:
-                failed_count += 1
-                logger.error(f"Failed to take screenshot for {url}")
-            
-            # Add delay between requests to be respectful
-            time.sleep(random.uniform(1, 2))
-        
-        # Determine if processing is complete
-        is_complete = self.end_row >= self.total_records
-        next_start_row = self.end_row if not is_complete else 0
-        
-        # Save batch results
-        batch_results = {
-            'start_row': self.start_row,
-            'end_row': self.end_row,
-            'successful': successful_count,
-            'failed': failed_count,
-            'total_in_batch': len(self.records),
-            'is_complete': is_complete,
-            'next_start_row': next_start_row,
-            'total_records': self.total_records
-        }
-        
-        with open('batch_results.json', 'w') as f:
-            json.dump(batch_results, f, indent=2)
-        
-        logger.info(f"Batch processing complete. Successful: {successful_count}, Failed: {failed_count}")
-        logger.info(f"Processing complete: {is_complete}")
-        logger.info(f"Next start row: {next_start_row}")
-        
-        return successful_count, failed_count, is_complete
-    
-    def cleanup(self):
-        """Clean up resources"""
-        try:
-            if hasattr(self, 'driver'):
-                self.driver.quit()
-                logger.info("Selenium driver closed")
-        except Exception as e:
-            logger.error(f"Error during cleanup: {str(e)}")
-
-    def restart_driver(self):
-        """Restart the driver to prevent resource issues"""
-        try:
-            logger.info("Restarting Selenium driver...")
-            self.driver.quit()
-            time.sleep(3)  # Give time for cleanup
-            self.setup_selenium_driver()
-            logger.info("Driver restarted successfully")
-        except Exception as e:
-            logger.error(f"Error restarting driver: {str(e)}")
-            # Try to force setup new driver
-            self.setup_selenium_driver()
-
-    def clear_browser_data(self):
-        """Clear browser cache and cookies"""
-        try:
-            self.driver.delete_all_cookies()
-            self.driver.execute_script("window.localStorage.clear();")
-            self.driver.execute_script("window.sessionStorage.clear();")
-            # Navigate to blank page to clear any loaded content
-            self.driver.get("about:blank")
-            logger.debug("Cleared browser data")
-        except Exception as e:
-            logger.warning(f"Could not clear browser data: {e}")
 
 def main():
-    """Main execution function with command line arguments"""
-    parser = argparse.ArgumentParser(description='Batch Screenshot Automation')
-    parser.add_argument('--start-row', type=int, default=0, help='Starting row number (0-based)')
-    parser.add_argument('--batch-size', type=int, default=50, help='Number of rows to process in this batch')
+    # Google API Setup
+    DELEGATED_USER = 'y.kuanysh@prpillar.com'
+    SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
+
+    service_account_info = os.environ.get("GOOGLE_SERVICE_ACCOUNT")
+    if not service_account_info:
+        raise ValueError("Missing GOOGLE_SERVICE_ACCOUNT secret")
+
+    credentials = Credentials.from_service_account_info(
+        json.loads(service_account_info),
+        scopes=SCOPES,
+        subject=DELEGATED_USER
+    )
+
+    gc = gspread.authorize(credentials)
+    drive_service = build('drive', 'v3', credentials=credentials)
+
+    # Spreadsheet setup
+    spreadsheet_id = '1OHzJc9hvr6tgi2ehogkfP9sZHYkI3dW1nB62JCpM9D0'
     
-    args = parser.parse_args()
+    # Database setup
+    sheet_name = 'Database'
+    sheet = gc.open_by_key(spreadsheet_id).worksheet(sheet_name)
+
+    # Configuration setup
+    sheet_name = 'Configurations'
+    config_sheet = gc.open_by_key(spreadsheet_id).worksheet(sheet_name)
+
+    # Read configs from the sheet
+    start_row = config_sheet.acell("B2").value
+    if start_row is None or start_row.strip() == "" or not start_row.strip().isdigit():
+        start_row = 0
+        config_sheet.update("B2", "0")
+        print("B2 was empty or invalid. Reset to 0")
+    else:
+        start_row  = int(start_row.strip())
+
+    batch_size = config_sheet.acell("B1").value
+    if batch_size is None or not batch_size.strip().isdigit():
+        raise ValueError("Invalid batch size in B1")
+    batch_size = int(batch_size.strip())
     
-    automation = None
-    try:
-        automation = BatchScreenshotAutomation(start_row=args.start_row, batch_size=args.batch_size)
-        successful, failed, is_complete = automation.process_batch()
-        
-        print(f"\n=== BATCH SUMMARY ===")
-        print(f"Batch: rows {args.start_row} to {args.start_row + args.batch_size - 1}")
-        print(f"Successful: {successful}")
-        print(f"Failed: {failed}")
-        print(f"Processing complete: {is_complete}")
-        
-    except Exception as e:
-        logger.error(f"Fatal error: {str(e)}")
-        # Create error results file
-        error_results = {
-            'start_row': args.start_row,
-            'end_row': args.start_row,
-            'successful': 0,
-            'failed': 0,
-            'total_in_batch': 0,
-            'is_complete': False,
-            'next_start_row': args.start_row,
-            'error': str(e)
-        }
-        with open('batch_results.json', 'w') as f:
-            json.dump(error_results, f, indent=2)
-        raise
-    finally:
-        if automation:
-            automation.cleanup()
+    # Select batch rows
+    all_records = sheet.get_all_records()
+    total_rows = len(all_records)
+
+    # Calculating end row
+    end_row = min(start_row + batch_size, total_rows)
+
+    if start_row >= total_rows:
+        print(f"WARNING: start row ({start_row}) exceeds total rows ({total_rows}). Nothing to process")
+        config_sheet.update("B2", "0")
+        return True
+
+    print(f"Processing batch: rows {start_row} to {end_row - 1}")
+    batch_records = all_records[start_row:end_row]
+
+    # For debugging
+    status_results = []
+
+    # Selenium setup
+    chrome_options = Options()
+    # Selenium arguments
+    # TODO add bypasses for sites?
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--disable-plugins")
+    chrome_options.add_argument("--page-load-strategy=eager")
+
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=chrome_options)
+    driver.maximize_window()
+
+    driver.set_page_load_timeout(30)
+    driver.implicitly_wait(10)
+
+    for record in batch_records:
+        url = record['Link']
+        folder_id = record['Link to folder']
+        status = ""
+
+        try:
+            driver.get(url)
+            time.sleep(random.uniform(1, 3))
+        except TimeoutException:
+            status = "Timeout"
+            print(f"Timeout while trying to connect to {url}")
+            status_results.append([status])
+            continue
+        except WebDriverException as e:
+            status = "WebDriver error"
+            print(f"WebDriver error on {url}: {e}")
+            status_results.append([status])
+            continue
+
+        try:
+            current_date = datetime.now().strftime('%Y-%m-%d')
+            page_width = driver.execute_script('return document.body.scrollWidth')
+            page_height = driver.execute_script('return document.body.scrollHeight')
+
+            if page_width is None or page_height is None or page_width <= 0 or page_height <= 0:
+                page_width = 800
+                page_height = 600
+            
+            safe_url = sanitize_filename(url)
+            screenshot_path = f"{current_date}-{record['Client']}-{safe_url}.png"
+
+            driver.set_window_size(page_width, page_height)
+            driver.save_screenshot(screenshot_path)
+        except Exception as e:
+            status = "Screenshot error"
+            print(f"Screenshot error for {url}: {e}")
+            status_results.append([status])
+            continue
+
+        try:
+            file_metadata = {'name': screenshot_path, 'parents': [folder_id]}
+            media = MediaFileUpload(screenshot_path, mimetype='image/png')
+            drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        except Exception as e:
+            status = "Upload failed"
+            print(f"Failed to upload {screenshot_path} for {url} to Google Drive: {e}")
+            status_results.append([status])
+            continue
+
+        try:
+            os.remove(screenshot_path)
+        except Exception as e:
+            print(f"Failed to delete local screenshot {screenshot_path}: {str(e)}")
+
+        status_results.append(["True"]) # if all went well
+
+    driver.quit()
+
+    # Write status results to column F (Status) in 'Database' sheet
+    status_cell_range = f"F{start_row + 2}:F{end_row + 1}" # +2 for 1-based index + header
+    sheet.update(status_cell_range, status_results)
+
+    # Update next start row in Configurations!B2
+    config_sheet.update("B2", str(end_row))
+    print(f"Updated start row in Configurations!B2 to {end_row}")
+
+    # Check if this is the final batch
+    if end_row >= total_rows:
+        print("All rows have been processed")
+        config_sheet.update("B2", "0")
+        return True
+    else:
+        print(f"More rows ({total_rows - end_row} remain to be processed)")
+        return False
+    
+
+def sanitize_filename(url, max_length = 100):
+    invalid_characters = ['<', '>', ':', '"', '/', '\\', '|', '?', '*', ' ']
+    safe_text = ''.join('_' if c in invalid_characters else c for c in url)
+
+    if len(safe_text) > max_length:
+        safe_text = safe_text[:max_length]
+
+    return safe_text
 
 if __name__ == "__main__":
-    main()
+    done = main()
+    if done:
+        exit(0)
+    else:
+        exit(100) # Github rerun signal
