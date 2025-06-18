@@ -94,6 +94,8 @@ def main():
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--disable-plugins")
     chrome_options.add_argument("--page-load-strategy=eager")
+    chrome_options.add_argument("--disable-notifications")
+    chrome_options.add_argument("--disable-popup-blocking")
 
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=chrome_options)
@@ -107,11 +109,17 @@ def main():
 
     for index, record in enumerate(batch_records):
         url = record['Link']
+        platform = record['Platform']
         folder_id = record['Link to folder']
         status = ""
 
         try:
             driver.get(url)
+
+            WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            
             time.sleep(random.uniform(1, 3))
         except TimeoutException:
             status = "Timeout"
@@ -125,18 +133,23 @@ def main():
             continue
 
         try:
-            current_date = datetime.now().strftime('%Y-%m-%d')
-            page_width = driver.execute_script('return document.body.scrollWidth')
-            page_height = driver.execute_script('return document.body.scrollHeight')
+            if platform == "google.com":
+                page_width = 1920
+                page_height = 1080
+            else:
+                page_width = driver.execute_script('return document.body.scrollWidth')
+                page_height = driver.execute_script('return document.body.scrollHeight')
 
-            if page_width is None or page_height is None or page_width <= 0 or page_height <= 0:
-                page_width = 800
-                page_height = 600
+                if page_width is None or page_height is None or page_width <= 0 or page_height <= 0:
+                    page_width = 800
+                    page_height = 600
+            driver.set_window_size(page_width, page_height)
+            
+            current_date = datetime.now().strftime('%Y-%m-%d')
             
             safe_url = sanitize_filename(url)
             screenshot_path = f"{current_date}-{record['Client']}-{safe_url}.png"
 
-            driver.set_window_size(page_width, page_height)
             driver.save_screenshot(screenshot_path)
         except Exception as e:
             status = "Screenshot error"
