@@ -56,7 +56,7 @@ def main():
     start_row = config_sheet.acell("B2").value
     if start_row is None or start_row.strip() == "" or not start_row.strip().isdigit():
         start_row = 0
-        config_sheet.update("B2", "0")
+        config_sheet.update("B2", [["0"]])
         print("B2 was empty or invalid. Reset to 0")
     else:
         start_row  = int(start_row.strip())
@@ -78,7 +78,7 @@ def main():
 
     if start_row >= total_rows:
         print(f"WARNING: start row ({start_row}) exceeds total rows ({total_rows}). Nothing to process")
-        config_sheet.update("B2", "0")
+        config_sheet.update("B2", [["0"]])
         return True
     print("Done.")
 
@@ -195,7 +195,7 @@ def main():
     # Check if this is the final batch
     if end_row >= total_rows:
         print("All rows have been processed")
-        config_sheet.update("B2", "0")
+        config_sheet.update("B2", [["0"]])
         return True
     else:
         print(f"More rows ({total_rows - end_row} remain to be processed)")
