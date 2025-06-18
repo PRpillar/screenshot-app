@@ -123,7 +123,7 @@ def main():
                 EC.presence_of_element_located((By.TAG_NAME, "body"))
             )
 
-            time.sleep(random.uniform(1, 3))
+            time.sleep(random.uniform(5, 10))
         except TimeoutException:
             status = "Timeout"
             print(f"Timeout while trying to connect to {url}")
@@ -138,7 +138,7 @@ def main():
         try:
             if platform == "google.com":
                 page_width = 1920
-                page_height = 1080
+                page_height = 3240
             else:
                 page_width = driver.execute_script('return document.body.scrollWidth')
                 page_height = driver.execute_script('return document.body.scrollHeight')
