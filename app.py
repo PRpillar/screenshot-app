@@ -186,7 +186,7 @@ def main():
     print("Done.")
 
     # Update next start row in Configurations!B2
-    config_sheet.update("B2", str(end_row))
+    config_sheet.update("B2", [[str(end_row)]])
     print(f"Updated start row in Configurations!B2 to {end_row}")
 
     # Check if this is the final batch
