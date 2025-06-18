@@ -135,17 +135,20 @@ def main():
             status_results.append([status])
             continue
 
-        try:
-            if platform == "google.com":
-                page_width = 1920
-                page_height = 3240
-            else:
-                page_width = driver.execute_script('return document.body.scrollWidth')
-                page_height = driver.execute_script('return document.body.scrollHeight')
+        if is_cloudflare_verification(driver):
+            status = "Cloudflare verification detected"
+            print(f"Cloudflare detected on {url}")
+            status_results.append([status])
+            continue
 
-                if page_width is None or page_height is None or page_width <= 0 or page_height <= 0:
-                    page_width = 800
-                    page_height = 600
+        try:
+            page_width = driver.execute_script('return document.body.scrollWidth')
+            page_height = driver.execute_script('return document.body.scrollHeight')
+
+            if page_width is None or page_height is None or page_width <= 0 or page_height <= 0:
+                page_width = 800
+                page_height = 600
+            
             driver.set_window_size(page_width, page_height)
             
             current_date = datetime.now().strftime('%Y-%m-%d')
@@ -210,6 +213,17 @@ def sanitize_filename(url, max_length = 100):
         safe_text = safe_text[:max_length]
 
     return safe_text
+
+def is_cloudflare_verification(driver):
+    try:
+        # Look for Cloudflare's "Please Wait" or "I'm not a robot" element (common indicator of CAPTCHA page)
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'div.cf-browser-verification'))
+        )
+        return True
+    except:
+        return False
+
 
 if __name__ == "__main__":
     done = main()
