@@ -1,8 +1,8 @@
 name: monthly
 
 on:
-  schedule:
-    - cron: "0 6 1 * *"  # Scheduled to run at 6AM on 1st day of every month
+#  schedule:
+#    - cron: "0 6 1 * *"  # Scheduled to run at 6AM on 1st day of every month
   workflow_dispatch:
 
 jobs:
