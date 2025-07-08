@@ -1,32 +1,46 @@
-name: monthly
+name: monthly_test
 
 on:
 #  schedule:
-#    - cron: "0 6 1 * *"  # Scheduled to run at 6AM on 1st day of every month
-  workflow_dispatch:
+#    - cron: "0 6 1 * *"  # Run monthly_test
+  workflow_dispatch:  # Manual trigger
 
 jobs:
   run-python-script:
-    runs-on: ubuntu-latest  # Specifies the runner environment
+    runs-on: ubuntu-latest
 
     env:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
 
     steps:
-      - uses: actions/checkout@v2  # Checks-out your repository
+      - uses: actions/checkout@v2
 
       - name: Set up Python
-        uses: actions/setup-python@v2  # Sets up Python environment
+        uses: actions/setup-python@v2
         with:
-          python-version: '3.9'  # Specify the Python version
+          python-version: '3.9'
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt  # Install dependencies
+          pip install -r requirements.txt
+
       - name: Setup Chrome
         uses: browser-actions/setup-chrome@latest
         with:
-          chrome-version: stable  # Installs the stable version of Chrome      
+          chrome-version: stable
 
       - name: Run Python Script
-        run: python app.py
+        id: run-script
+        run: |
+          python app.py
+        continue-on-error: true  # Don't fail job on non-zero exit
+
+      - name: Trigger Another Run if Needed
+        if: steps.run-script.outcome == 'failure'
+        run: |
+          echo "Re-dispatching the workflow..."
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/PRpillar/screenshot-app/actions/workflows/monthly_test.yaml/dispatches \
+            -d '{"ref":"YK-branch-1.0"}'
