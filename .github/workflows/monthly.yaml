@@ -1,8 +1,7 @@
-name: monthly_test
-
+name: monthly
 on:
 #  schedule:
-#    - cron: "0 6 1 * *"  # Run monthly_test
+#    - cron: "0 6 1 * *"  # Run monthly
   workflow_dispatch:  # Manual trigger
 
 jobs:
@@ -42,5 +41,5 @@ jobs:
           curl -X POST \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/PRpillar/screenshot-app/actions/workflows/monthly_test.yaml/dispatches \
+            https://api.github.com/repos/PRpillar/screenshot-app/actions/workflows/monthly.yaml/dispatches \
             -d '{"ref":"YK-branch-1.0"}'
