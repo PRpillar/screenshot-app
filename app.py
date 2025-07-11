@@ -25,10 +25,10 @@ from urllib.parse import urlparse
 # ---------------- Selenium driver factory -----------------
 
 def create_chrome_driver(headless: bool = True):
-    """Return a configured Chrome WebDriver instance.
+    """Return a configured Chrome WebDriver instance, with automatic fallback.
 
-    Prefers undetected_chromedriver (uc) when installed; falls back to the
-    regular Selenium driver with several anti-detection tweaks.
+    Prefers undetected_chromedriver (uc) when installed; if uc fails or is not
+    present, falls back to the regular Selenium driver.
     """
     common_args = [
         "--disable-extensions",
@@ -39,36 +39,46 @@ def create_chrome_driver(headless: bool = True):
         "--disable-blink-features=AutomationControlled",
     ]
 
+    # -------- Attempt #1: undetected-chromedriver --------
     if uc is not None:
-        options = uc.ChromeOptions()
-        if headless:
-            # new Headless mode is less detectable
-            options.add_argument("--headless=new")
-        for arg in common_args:
-            options.add_argument(arg)
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option("useAutomationExtension", False)
+        try:
+            uc_options = uc.ChromeOptions()
+            if headless:
+                uc_options.add_argument("--headless=new")
+            for arg in common_args:
+                uc_options.add_argument(arg)
+            # NOTE: uc already takes care of excludeSwitches / useAutomationExtension
+            driver = uc.Chrome(options=uc_options, use_subprocess=True)
+            driver.set_page_load_timeout(30)
+            driver.implicitly_wait(10)
+            return driver
+        except InvalidArgumentException as uc_err:
+            # uc produced an invalid option for the current Chrome version – fall back
+            print(f"undetected-chromedriver failed ({uc_err}); falling back to regular Selenium driver...")
+        except Exception as uc_generic_err:
+            print(f"undetected-chromedriver failed ({uc_generic_err}); falling back...")
 
-        driver = uc.Chrome(options=options, use_subprocess=True)
-    else:
-        # Fallback to regular selenium driver
-        options = Options()
-        if headless:
-            options.add_argument("--headless")
-        for arg in common_args:
-            options.add_argument(arg)
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option("useAutomationExtension", False)
+    # -------- Fallback: regular Selenium driver --------
+    options = Options()
+    if headless:
+        options.add_argument("--headless")
+    for arg in common_args:
+        options.add_argument(arg)
+    # Anti-detection tweaks supported by vanilla Chrome
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option("useAutomationExtension", False)
 
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=options)
-        # hide webdriver flag
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
+    # hide webdriver flag
+    try:
         driver.execute_cdp_cmd(
             'Page.addScriptToEvaluateOnNewDocument',
             {'source': 'Object.defineProperty(navigator, "webdriver", {get: () => undefined})'}
         )
+    except Exception:
+        pass
 
-    # Standard timeouts
     driver.set_page_load_timeout(30)
     driver.implicitly_wait(10)
     return driver
