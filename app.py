@@ -21,6 +21,8 @@ import json
 import random
 import time
 from urllib.parse import urlparse
+# NEW: ActionChains for frame clicking
+from selenium.webdriver.common.action_chains import ActionChains
 
 # ---------------- Selenium driver factory -----------------
 
@@ -311,16 +313,21 @@ def bypass_cloudflare_verification(driver, max_wait=60):
             src = frame.get_attribute("src") or ""
             if "challenge" in src or "turnstile" in src or "hcaptcha" in src:
                 try:
+                    # Attempt to click the centre of the iframe to trigger checkbox
+                    ActionChains(driver).move_to_element(frame).pause(0.3).click().perform()
+                except Exception:
+                    pass
+                try:
                     driver.switch_to.frame(frame)
-                    for sel in possible_selectors:
-                        elems = driver.find_elements(By.XPATH, sel)
-                        if elems:
-                            try:
-                                elems[0].click()
-                            except Exception:
-                                pass
+                    # search for checkbox type input or label
+                    checkbox_like = driver.find_elements(By.XPATH, "//input[@type='checkbox'] | //div[contains(@class,'ctp-checkbox')] | //label")
+                    if checkbox_like:
+                        try:
+                            ActionChains(driver).move_to_element(checkbox_like[0]).pause(0.2).click().perform()
                             driver.switch_to.default_content()
                             return True
+                        except Exception:
+                            pass
                     driver.switch_to.default_content()
                 except Exception:
                     driver.switch_to.default_content()
