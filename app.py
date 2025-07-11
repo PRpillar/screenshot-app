@@ -99,9 +99,17 @@ def main():
     chrome_options.add_argument("--page-load-strategy=eager")
     chrome_options.add_argument("--disable-notifications")
     chrome_options.add_argument("--disable-popup-blocking")
+    # NEW: Reduce Selenium detectability for Cloudflare
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
 
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=chrome_options)
+    # Hide webdriver property
+    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+        'source': 'Object.defineProperty(navigator, "webdriver", {get: () => undefined})'
+    })
     driver.maximize_window()
 
     driver.set_page_load_timeout(30)
@@ -136,10 +144,12 @@ def main():
             continue
 
         if is_cloudflare_verification(driver):
-            status = "Cloudflare verification detected"
-            print(f"Cloudflare detected on {url}")
-            status_results.append([status])
-            continue
+            # Attempt to bypass Cloudflare banner automatically
+            if not bypass_cloudflare_verification(driver):
+                status = "Cloudflare verification detected"
+                print(f"Cloudflare detected on {url} and could not be bypassed")
+                status_results.append([status])
+                continue
 
         try:
             page_width = driver.execute_script('return document.body.scrollWidth')
@@ -223,6 +233,43 @@ def is_cloudflare_verification(driver):
         return True
     except:
         return False
+
+def bypass_cloudflare_verification(driver, max_wait=60):
+    """Attempt to automatically bypass Cloudflare \"Verify you are human\" banner.
+
+    The function tries to click on common verification buttons or simply waits
+    for Cloudflare to redirect if the challenge is passive. Returns True if the
+    banner disappears within the given timeout, otherwise False.
+    """
+    end_time = time.time() + max_wait
+
+    # Common XPATH selectors that appear on Cloudflare verification pages
+    possible_selectors = [
+        "//button[contains(., 'Verify') and not(contains(@style,'display: none'))]",
+        "//input[@type='button' and contains(@value, 'Verify')]",
+        "//button[contains(., 'Continue')]",
+        "//span[contains(text(), 'Verify')]/ancestor::button",
+    ]
+
+    while time.time() < end_time:
+        if not is_cloudflare_verification(driver):
+            return True  # banner gone
+
+        try:
+            for sel in possible_selectors:
+                elements = driver.find_elements(By.XPATH, sel)
+                if elements:
+                    try:
+                        elements[0].click()
+                    except Exception:
+                        pass
+                    break  # Attempted a click; break out to allow page to update
+        except Exception:
+            pass
+
+        time.sleep(3)  # Give page a moment to update
+
+    return not is_cloudflare_verification(driver)
 
 
 if __name__ == "__main__":
