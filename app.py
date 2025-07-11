@@ -23,6 +23,9 @@ import time
 from urllib.parse import urlparse
 # NEW: ActionChains for frame clicking
 from selenium.webdriver.common.action_chains import ActionChains
+import uuid
+
+DEBUG_CLOUDFLARE = os.getenv("DEBUG_CLOUDFLARE", "false").lower() in ("1", "true", "yes")
 
 # ---------------- Selenium driver factory -----------------
 
@@ -198,6 +201,8 @@ def main():
         if is_cloudflare_verification(driver):
             # Attempt to bypass Cloudflare banner automatically
             if not bypass_cloudflare_verification(driver):
+                if DEBUG_CLOUDFLARE:
+                    debug_dump_cloudflare_page(driver, url)
                 status = "Cloudflare verification detected"
                 print(f"Cloudflare detected on {url} and could not be bypassed")
                 status_results.append([status])
@@ -359,6 +364,38 @@ def bypass_cloudflare_verification(driver, max_wait=60):
         time.sleep(3)  # Give page a moment to update
 
     return not is_cloudflare_verification(driver)
+
+
+def debug_dump_cloudflare_page(driver, url: str):
+    """Dump the current page source and basic Cloudflare info to help with debugging."""
+    try:
+        filename_safe = sanitize_filename(url, 50)
+        dump_id = uuid.uuid4().hex[:8]
+        html_path = f"cf_debug_{filename_safe}_{dump_id}.html"
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(driver.page_source)
+        print(f"[DEBUG] Saved Cloudflare page HTML to {html_path}")
+
+        # Provide quick stats in the log
+        frames = driver.find_elements(By.TAG_NAME, "iframe")
+        print(f"[DEBUG] Number of iframes detected: {len(frames)}")
+        for idx, frame in enumerate(frames[:10]):
+            print(f"    iframe #{idx}: src={frame.get_attribute('src')}")
+
+        # List first 1-2 matching selectors (if any)
+        candidates = [
+            "//input[@type='checkbox']",
+            "//div[contains(@class,'ctp-checkbox')]",
+            "//button[contains(., 'Verify')]",
+            "//label[contains(., 'Verify')]",
+        ]
+        for sel in candidates:
+            found = driver.find_elements(By.XPATH, sel)
+            if found:
+                print(f"[DEBUG] Selector '{sel}' returned {len(found)} element(s)")
+                print(f"        First element tag: {found[0].tag_name} class: {found[0].get_attribute('class')}")
+    except Exception as e:
+        print(f"[DEBUG] Failed to dump Cloudflare page details: {e}")
 
 
 if __name__ == "__main__":
