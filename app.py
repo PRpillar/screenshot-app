@@ -25,7 +25,7 @@ from urllib.parse import urlparse
 from selenium.webdriver.common.action_chains import ActionChains
 import uuid
 
-DEBUG_CLOUDFLARE = os.getenv("DEBUG_CLOUDFLARE", "false").lower() in ("1", "true", "yes")
+DEBUG_CLOUDFLARE = os.getenv("DEBUG_CLOUDFLARE", "true").lower() in ("1", "true", "yes")
 
 # ---------------- Selenium driver factory -----------------
 
