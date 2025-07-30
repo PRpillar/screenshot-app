@@ -13,7 +13,7 @@ jobs:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
 
     steps:
-      - uses: actions/checkout@v2  # Checks-out your repository
+      - uses: actions/checkout@v2  # Checks out your repository
 
       - name: Set up Python
         uses: actions/setup-python@v2  # Sets up Python environment
@@ -30,19 +30,23 @@ jobs:
           chrome-version: stable  # Installs the stable version of Chrome  
 
       # -----------------------------------
-      # Tailscale Setup (Added Steps)
+      # Tailscale Setup (Auth Key Only)
       # -----------------------------------
       - name: Set up Tailscale
         uses: tailscale/github-action@v2
         with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          authkey: ${{ secrets.TS_AUTH_KEY }}
 
       - name: Connect to Tailscale Exit Node
         run: |
-          sudo tailscale up \
-            --exit-node=${{ secrets.TS_EXIT_NODE_IP }} \
-            --authkey=${{ secrets.TS_AUTH_KEY }}
+          sudo tailscale up --exit-node=${{ secrets.TS_EXIT_NODE_IP }}
+
+      # Optional: Verify Tailscale connection
+      - name: Test Tailscale Connectivity
+        run: |
+          echo "Checking IP after connecting to Tailscale exit node..."
+          curl ifconfig.me || true
+          tailscale status || true
 
       # -----------------------------------
       # Run Python Script
