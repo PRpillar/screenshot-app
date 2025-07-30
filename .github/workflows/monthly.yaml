@@ -23,10 +23,29 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt  # Install dependencies
+
       - name: Setup Chrome
         uses: browser-actions/setup-chrome@latest
         with:
-          chrome-version: stable  # Installs the stable version of Chrome      
+          chrome-version: stable  # Installs the stable version of Chrome  
 
+      # -----------------------------------
+      # Tailscale Setup (Added Steps)
+      # -----------------------------------
+      - name: Set up Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+
+      - name: Connect to Tailscale Exit Node
+        run: |
+          sudo tailscale up \
+            --exit-node=${{ secrets.TS_EXIT_NODE_IP }} \
+            --authkey=${{ secrets.TS_AUTH_KEY }}
+
+      # -----------------------------------
+      # Run Python Script
+      # -----------------------------------
       - name: Run Python Script
         run: python app.py
