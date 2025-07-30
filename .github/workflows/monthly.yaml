@@ -30,12 +30,13 @@ jobs:
           chrome-version: stable  # Installs the stable version of Chrome  
 
       # -----------------------------------
-      # Tailscale Setup (Auth Key Only)
+      # Tailscale Setup using OAuth
       # -----------------------------------
       - name: Set up Tailscale
         uses: tailscale/github-action@v2
         with:
-          authkey: ${{ secrets.TS_AUTH_KEY }}
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
 
       - name: Connect to Tailscale Exit Node
         run: |
