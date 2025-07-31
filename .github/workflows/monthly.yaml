@@ -18,37 +18,38 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v2  # Sets up Python environment
         with:
-          python-version: '3.9'  # Specify the Python version
+          python-version: '3.9'
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt  # Install dependencies
+          pip install -r requirements.txt
 
       - name: Setup Chrome
         uses: browser-actions/setup-chrome@latest
         with:
-          chrome-version: stable  # Installs the stable version of Chrome  
+          chrome-version: stable
 
-      # -----------------------------------
-      # Tailscale Setup using OAuth
-      # -----------------------------------
-      - name: Set up Tailscale
+      # -------------------------------
+      # ✅ Correct Tailscale Setup
+      # -------------------------------
+      - name: Set up Tailscale with Exit Node
         uses: tailscale/github-action@v2
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: "tag:github-runner"
-          exit-node: ${{ secrets.TS_EXIT_NODE_IP }}
+          args: "--exit-node=${{ secrets.TS_EXIT_NODE_IP }}"
 
-      # Optional: Verify Tailscale connection
+      # Optional: Test if exit node is active
       - name: Test Tailscale Connectivity
         run: |
-          echo "Checking IP after connecting to Tailscale exit node..."
+          echo "🌐 IP after connecting to exit node:"
           curl ifconfig.me || true
+          echo "🔍 Tailscale status:"
           tailscale status || true
 
-      # -----------------------------------
+      # -------------------------------
       # Run Python Script
-      # -----------------------------------
+      # -------------------------------
       - name: Run Python Script
         run: python app.py
