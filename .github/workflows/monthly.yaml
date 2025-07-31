@@ -37,10 +37,8 @@ jobs:
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-
-      - name: Connect to Tailscale Exit Node
-        run: |
-          sudo tailscale up --exit-node=${{ secrets.TS_EXIT_NODE_IP }}
+          tags: "tag:github-runner"
+          exit-node: ${{ secrets.TS_EXIT_NODE_IP }}
 
       # Optional: Verify Tailscale connection
       - name: Test Tailscale Connectivity
