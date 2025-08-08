@@ -35,10 +35,9 @@ jobs:
       - name: Set up Tailscale with Exit Node
         uses: tailscale/github-action@v2
         with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          authkey: ${{ secrets.TS_AUTHKEY }}
           tags: "tag:github-runner"
-          args: "--exit-node=${{ secrets.TS_EXIT_NODE_IP }}"
+          args: "--exit-node=${{ secrets.TS_EXIT_NODE_IP }} --accept-routes --ephemeral"
 
       # Optional: Test if exit node is active
       - name: Test Tailscale Connectivity
