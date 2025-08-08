@@ -1,17 +1,17 @@
 name: monthly
 on:
   schedule:
-    - cron: "0 6 1 *"  # Scheduled to run at 6AM on 1st day of every month
+    - cron: "0 6 1 "  # Scheduled to run at 6AM on 1st day of every month
   workflow_dispatch:
 jobs:
   run-python-script:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest  # Specifies the runner environment
     env:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v2  # Checks out your repository
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v2  # Sets up Python environment
         with:
           python-version: '3.9'
       - name: Install dependencies
@@ -21,23 +21,26 @@ jobs:
         uses: browser-actions/setup-chrome@latest
         with:
           chrome-version: stable
-      
-      # Just add timeout to your existing Tailscale step
+      # -------------------------------
+      # ✅ Correct Tailscale Setup
+      # -------------------------------
       - name: Set up Tailscale with Exit Node
         uses: tailscale/github-action@v2
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: "tag:github-runner"
-          args: "--exit-node=${{ secrets.TS_EXIT_NODE_IP }} --accept-routes --timeout=60s"
-      
-      # Add simple connectivity test
+          args: "--exit-node=${{ secrets.TS_EXIT_NODE_IP }} --accept-routes"
+      # Optional: Test if exit node is active
       - name: Test Tailscale Connectivity
         run: |
-          echo "IP after connecting to exit node:"
+          echo "🌐 IP after connecting to exit node:"
           curl ifconfig.me || true
-          echo "Tailscale status:"
+          echo "🔍 Tailscale status:"
           tailscale status || true
-      
+      # -------------------------------
+      # Run Python Script
+      # -------------------------------
       - name: Run Python Script
         run: python app.py
+
