@@ -22,64 +22,22 @@ jobs:
         with:
           chrome-version: stable
       
-      # -------------------------------
-      # Enhanced Tailscale Setup with Debugging
-      # -------------------------------
-      - name: Debug - Check initial IP
-        run: |
-          echo "🌐 Initial IP before Tailscale:"
-          curl -s ifconfig.me || echo "Failed to get IP"
-          echo ""
-      
+      # Just add timeout to your existing Tailscale step
       - name: Set up Tailscale with Exit Node
-        id: tailscale-setup
         uses: tailscale/github-action@v2
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: "tag:github-runner"
-          args: "--exit-node=${{ secrets.TS_EXIT_NODE_IP }} --accept-routes --timeout=120s"
-        continue-on-error: true
+          args: "--exit-node=${{ secrets.TS_EXIT_NODE_IP }} --accept-routes --timeout=60s"
       
-      # Test connectivity with more detailed output
-      - name: Enhanced Tailscale Connectivity Test
+      # Add simple connectivity test
+      - name: Test Tailscale Connectivity
         run: |
-          echo "🔍 Detailed Tailscale status:"
-          tailscale status --json | jq '.' || tailscale status || echo "Tailscale status failed"
-          
-          echo ""
-          echo "🌐 Current public IP:"
-          curl -s ifconfig.me || echo "Failed to get public IP"
-          
-          echo ""
-          echo "📡 Tailscale netcheck:"
-          tailscale netcheck || echo "Netcheck failed"
-          
-          echo ""
-          echo "🔗 Exit node info:"
-          tailscale status | grep -i exit || echo "No exit node info found"
-          
-          echo ""
-          echo "📋 Full tailscale debug info:"
-          tailscale debug --help || echo "Debug command not available"
+          echo "IP after connecting to exit node:"
+          curl ifconfig.me || true
+          echo "Tailscale status:"
+          tailscale status || true
       
-      # Only proceed if Tailscale setup succeeded
       - name: Run Python Script
-        if: steps.tailscale-setup.outcome == 'success'
         run: python app.py
-      
-      # If Tailscale failed, try alternative approach
-      - name: Fallback - Try without exit node
-        if: steps.tailscale-setup.outcome == 'failure'
-        uses: tailscale/github-action@v2
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: "tag:github-runner"
-          args: "--accept-routes --timeout=60s"
-      
-      - name: Run Python Script (Fallback)
-        if: steps.tailscale-setup.outcome == 'failure'
-        run: |
-          echo "⚠️  Running without exit node due to connection issues"
-          python app.py
