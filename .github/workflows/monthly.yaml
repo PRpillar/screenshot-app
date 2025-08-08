@@ -1,55 +1,85 @@
 name: monthly
-
 on:
   schedule:
-    - cron: "0 6 1 * *"  # Scheduled to run at 6AM on 1st day of every month
+    - cron: "0 6 1 *"  # Scheduled to run at 6AM on 1st day of every month
   workflow_dispatch:
-
 jobs:
   run-python-script:
-    runs-on: ubuntu-latest  # Specifies the runner environment
-
+    runs-on: ubuntu-latest
     env:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
-
     steps:
-      - uses: actions/checkout@v2  # Checks out your repository
-
+      - uses: actions/checkout@v2
       - name: Set up Python
-        uses: actions/setup-python@v2  # Sets up Python environment
+        uses: actions/setup-python@v2
         with:
           python-version: '3.9'
-
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-
       - name: Setup Chrome
         uses: browser-actions/setup-chrome@latest
         with:
           chrome-version: stable
-
+      
       # -------------------------------
-      # ✅ Correct Tailscale Setup
+      # Enhanced Tailscale Setup with Debugging
       # -------------------------------
+      - name: Debug - Check initial IP
+        run: |
+          echo "🌐 Initial IP before Tailscale:"
+          curl -s ifconfig.me || echo "Failed to get IP"
+          echo ""
+      
       - name: Set up Tailscale with Exit Node
+        id: tailscale-setup
         uses: tailscale/github-action@v2
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: "tag:github-runner"
-          args: "--exit-node=${{ secrets.TS_EXIT_NODE_IP }} --accept-routes"
-
-      # Optional: Test if exit node is active
-      - name: Test Tailscale Connectivity
+          args: "--exit-node=${{ secrets.TS_EXIT_NODE_IP }} --accept-routes --timeout=120s"
+        continue-on-error: true
+      
+      # Test connectivity with more detailed output
+      - name: Enhanced Tailscale Connectivity Test
         run: |
-          echo "🌐 IP after connecting to exit node:"
-          curl ifconfig.me || true
-          echo "🔍 Tailscale status:"
-          tailscale status || true
-
-      # -------------------------------
-      # Run Python Script
-      # -------------------------------
+          echo "🔍 Detailed Tailscale status:"
+          tailscale status --json | jq '.' || tailscale status || echo "Tailscale status failed"
+          
+          echo ""
+          echo "🌐 Current public IP:"
+          curl -s ifconfig.me || echo "Failed to get public IP"
+          
+          echo ""
+          echo "📡 Tailscale netcheck:"
+          tailscale netcheck || echo "Netcheck failed"
+          
+          echo ""
+          echo "🔗 Exit node info:"
+          tailscale status | grep -i exit || echo "No exit node info found"
+          
+          echo ""
+          echo "📋 Full tailscale debug info:"
+          tailscale debug --help || echo "Debug command not available"
+      
+      # Only proceed if Tailscale setup succeeded
       - name: Run Python Script
+        if: steps.tailscale-setup.outcome == 'success'
         run: python app.py
+      
+      # If Tailscale failed, try alternative approach
+      - name: Fallback - Try without exit node
+        if: steps.tailscale-setup.outcome == 'failure'
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: "tag:github-runner"
+          args: "--accept-routes --timeout=60s"
+      
+      - name: Run Python Script (Fallback)
+        if: steps.tailscale-setup.outcome == 'failure'
+        run: |
+          echo "⚠️  Running without exit node due to connection issues"
+          python app.py
