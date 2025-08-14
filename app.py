@@ -209,4 +209,5 @@ def sanitize_filename(url, max_length=100):
 
 if __name__ == "__main__":
     done = main()
-    exit(0 if done else 100)
+    # exit(0 if done else 100)
+    exit(0)
