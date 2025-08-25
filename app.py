@@ -80,21 +80,16 @@ def main():
     chrome_options.add_argument("--disable-notifications")
     chrome_options.add_argument("--disable-popup-blocking")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    # CI stability flags
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    # A common desktop user-agent (helps with some anti-bot/CDN checks)
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                                 "Chrome/124.0.0.0 Safari/537.36")
-    # Keep default (normal) page load strategy; eager can return too soon on heavy JS sites
-    # chrome_options.add_argument("--page-load-strategy=eager")  # <- removed on purpose
-
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=chrome_options)
     driver.set_page_load_timeout(60)
 
-    # Reduce obvious bot fingerprint
+    # Hide webdriver flag (best-effort)
     try:
         driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
             "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
@@ -102,37 +97,97 @@ def main():
     except Exception:
         pass
 
+    # --- helpers (kept inline for single-file simplicity) ---
+    def is_error_page(drv) -> bool:
+        try:
+            url = drv.current_url or ""
+        except Exception:
+            url = ""
+        if url.startswith("chrome-error://"):
+            return True
+        try:
+            # Common Chrome net error page markers
+            if drv.find_elements(By.ID, "main-frame-error"):
+                return True
+            if drv.find_elements(By.CSS_SELECTOR, ".error-code,.error-code span"):
+                return True
+            body_text = (drv.find_element(By.TAG_NAME, "body").text or "")[:2000]
+            if "ERR_" in body_text or "This site can’t be reached" in body_text or "This site can't be reached" in body_text:
+                return True
+        except Exception:
+            # If we cannot even query the DOM reliably, treat as error-ish signal
+            return True
+        return False
+
+    def wait_page_or_error(drv, timeout=40):
+        """Return 'ok' if page body present and not an error page; 'error' if Chrome error page detected."""
+        end = time.time() + timeout
+        last_err = None
+        while time.time() < end:
+            try:
+                # body present?
+                bodies = drv.find_elements(By.TAG_NAME, "body")
+                if bodies:
+                    if is_error_page(drv):
+                        return "error"
+                    # doc ready enough?
+                    try:
+                        rs = drv.execute_script("return document.readyState") or ""
+                    except Exception:
+                        rs = ""
+                    if rs in ("interactive", "complete"):
+                        return "ok"
+                time.sleep(0.25)
+            except Exception as e:
+                last_err = e
+                time.sleep(0.25)
+        # Timeout of this loop: if we timed out but see an error page, return error, else None
+        return "error" if is_error_page(drv) else None
+
+    def reset_tab(drv):
+        # Try to stop any loading / clear error state
+        try:
+            drv.execute_script("window.stop();")
+        except Exception:
+            pass
+        try:
+            drv.get("about:blank")
+        except Exception:
+            pass
+
     print("Beginning data parsing.")
 
     for index, record in enumerate(batch_records):
         url = record['Link']
         folder_id = record['Link to folder']
 
-        # --- Robust navigate with retries ---
         nav_ok = False
+        error_flag = False
+
         for attempt in range(1, 3):  # up to 2 tries
             try:
+                start = time.time()
                 driver.get(url)
 
-                WebDriverWait(driver, 40).until(
-                    EC.presence_of_element_located((By.TAG_NAME, "body"))
-                )
-                WebDriverWait(driver, 40).until(
-                    lambda d: d.execute_script("return document.readyState") in ("interactive", "complete")
-                )
-                # Light "network settled" wait: load event fired
-                WebDriverWait(driver, 10).until(
-                    lambda d: (d.execute_script("return (window.performance.timing.loadEventEnd||0)")) > 0
-                )
+                outcome = wait_page_or_error(driver, timeout=40)
+                if outcome == "error":
+                    error_flag = True
+                    raise TimeoutException("Chrome network error page detected")
+                if outcome is None:
+                    raise TimeoutException("Navigation wait timed out")
+
                 nav_ok = True
+                error_flag = False
                 break
             except (TimeoutException, WebDriverException) as e:
                 if attempt == 2:
-                    print(f"Navigate failed on {url}: {e}")
-                    status_results.append(["Timeout"])
+                    msg = "Connection error" if error_flag else "Timeout"
+                    print(f"{msg} on {url}: {e}")
+                    status_results.append([msg])
                 else:
                     backoff = 3 * attempt
                     print(f"Retrying {url} in {backoff}s due to: {e}")
+                    reset_tab(driver)
                     time.sleep(backoff)
 
         if not nav_ok:
@@ -209,5 +264,5 @@ def sanitize_filename(url, max_length=100):
 
 if __name__ == "__main__":
     done = main()
-    # exit(0 if done else 100)
+    # Always succeed the job even if some URLs fail
     exit(0)
