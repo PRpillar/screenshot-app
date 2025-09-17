@@ -1,45 +1,59 @@
 name: monthly
 on:
-#  schedule:
-#    - cron: "0 6 1 * *"  # Run monthly
-  workflow_dispatch:  # Manual trigger
+  schedule:
+    - cron: "0 6 1 * *"
+  workflow_dispatch:
 
 jobs:
   run-python-script:
     runs-on: ubuntu-latest
-
     env:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Setup Chrome
-        uses: browser-actions/setup-chrome@latest
+        uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: stable
 
-      - name: Run Python Script
-        id: run-script
-        run: |
-          python app.py
-        continue-on-error: true  # Don't fail job on non-zero exit
+      # NEW: Use v3 and OAuth client (no auth key)
+      - name: Connect to Tailscale (OAuth)
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: "tag:github-runner"
+          args: >-
+            --exit-node=${{ secrets.TS_EXIT_NODE_IP }}
+            --accept-routes
+            --timeout=60s
 
-      - name: Trigger Another Run if Needed
-        if: steps.run-script.outcome == 'failure'
+      # Helpful diagnostics if something goes wrong
+      - name: Tailscale status / IP check
         run: |
-          echo "Re-dispatching the workflow..."
-          curl -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/PRpillar/screenshot-app/actions/workflows/monthly.yaml/dispatches \
-            -d '{"ref":"YK-branch-1.0"}'
+          set -x
+          tailscale status || true
+          echo "Runner egress IP (should be exit-node IP):"
+          curl -4s https://ifconfig.me || true
+
+      - name: Run Python Script
+        run: python app.py
+
+      # Optional: capture tailscaled log if needed
+      - name: Dump tailscaled log on failure
+        if: failure()
+        run: |
+          echo "---- tailscaled.log ----"
+          cat ~/tailscaled.log || true
