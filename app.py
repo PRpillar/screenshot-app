@@ -3,7 +3,12 @@ import gspread
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.common.exceptions import TimeoutException, WebDriverException, InvalidArgumentException, NoSuchElementException
+# NEW: import undetected_chromedriver
+try:
+    import undetected_chromedriver as uc
+except ImportError:
+    uc = None  # Fallback handled later
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -224,6 +229,7 @@ def main():
             media = MediaFileUpload(screenshot_path, mimetype='image/png')
             drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
         except Exception as e:
+
             print(f"Failed to upload {screenshot_path} for {url} to Google Drive: {e}")
             status_results.append(["Upload failed"])
             continue
@@ -233,12 +239,14 @@ def main():
         except Exception as e:
             print(f"Failed to delete local screenshot {screenshot_path}: {str(e)}")
 
+
         status_results.append(["True"])
         if (index + 1) % 10 == 0:
             print(f"Processed {index + 1} rows")
 
     driver.quit()
     print("Finished parsing the batch")
+
 
     print("Updating status column in 'Database' sheet...")
     status_cell_range = f"F{start_row + 2}:F{end_row + 1}"
@@ -250,19 +258,141 @@ def main():
     if end_row >= total_rows:
         print("All rows have been processed")
         config_sheet.update(range_name="B2", values=[["0"]])
+
         return True
     else:
         print(f"More rows ({total_rows - end_row} remain to be processed)")
-        return False
+        return False    
 
-
-def sanitize_filename(url, max_length=100):
+def sanitize_filename(url, max_length = 100):
     invalid_characters = ['<', '>', ':', '"', '/', '\\', '|', '?', '*', ' ']
     safe_text = ''.join('_' if c in invalid_characters else c for c in url)
-    return safe_text[:max_length] if len(safe_text) > max_length else safe_text
+
+    if len(safe_text) > max_length:
+        safe_text = safe_text[:max_length]
+
+    return safe_text
+
+def is_cloudflare_verification(driver):
+    """Return True if the current page appears to be a Cloudflare challenge."""
+    try:
+        WebDriverWait(driver, 5).until(
+            lambda d: d.find_elements(By.CSS_SELECTOR, 'div.cf-browser-verification') or
+                      d.find_elements(By.XPATH, "//h1[contains(text(), 'Verify you are human')]") or
+                      d.find_elements(By.XPATH, "//iframe[contains(@src, 'challenges.cloudflare.com')]")
+        )
+        return True
+    except TimeoutException:
+        return False
+
+def bypass_cloudflare_verification(driver, max_wait=60):
+    """Attempt to automatically bypass Cloudflare \"Verify you are human\" banner.
+
+    The function tries to click on common verification buttons or simply waits
+    for Cloudflare to redirect if the challenge is passive. Returns True if the
+    banner disappears within the given timeout, otherwise False.
+    """
+    end_time = time.time() + max_wait
+
+    # Common XPATH selectors that appear on Cloudflare verification pages
+    possible_selectors = [
+        "//button[contains(., 'Verify') and not(contains(@style,'display: none'))]",
+        "//input[@type='button' and contains(@value, 'Verify')]",
+        "//button[contains(., 'Continue')]",
+        "//span[contains(text(), 'Verify')]/ancestor::button",
+        "//label[contains(., 'Verify you are human')]",
+    ]
+
+    # Attempt clicking inside potential iframes (Cloudflare Turnstile / hCaptcha)
+    def try_click_in_iframes():
+        frames = driver.find_elements(By.TAG_NAME, "iframe")
+        for frame in frames:
+            src = frame.get_attribute("src") or ""
+            if "challenge" in src or "turnstile" in src or "hcaptcha" in src:
+                try:
+                    # Attempt to click the centre of the iframe to trigger checkbox
+                    ActionChains(driver).move_to_element(frame).pause(0.3).click().perform()
+                except Exception:
+                    pass
+                try:
+                    driver.switch_to.frame(frame)
+                    # search for checkbox type input or label
+                    checkbox_like = driver.find_elements(By.XPATH, "//input[@type='checkbox'] | //div[contains(@class,'ctp-checkbox')] | //label")
+                    if checkbox_like:
+                        try:
+                            ActionChains(driver).move_to_element(checkbox_like[0]).pause(0.2).click().perform()
+                            driver.switch_to.default_content()
+                            return True
+                        except Exception:
+                            pass
+                    driver.switch_to.default_content()
+                except Exception:
+                    driver.switch_to.default_content()
+        return False
+
+    while time.time() < end_time:
+        if not is_cloudflare_verification(driver):
+            return True  # banner gone
+
+        try:
+            # First try on main document
+            clicked = False
+            for sel in possible_selectors:
+                elements = driver.find_elements(By.XPATH, sel)
+                if elements:
+                    try:
+                        elements[0].click()
+                        clicked = True
+                    except Exception:
+                        pass
+                    break
+
+            # If not clicked, try inside iframes
+            if not clicked:
+                try_click_in_iframes()
+        except Exception:
+            pass
+
+        time.sleep(3)  # Give page a moment to update
+
+    return not is_cloudflare_verification(driver)
+
+
+def debug_dump_cloudflare_page(driver, url: str):
+    """Dump the current page source and basic Cloudflare info to help with debugging."""
+    try:
+        filename_safe = sanitize_filename(url, 50)
+        dump_id = uuid.uuid4().hex[:8]
+        html_path = f"cf_debug_{filename_safe}_{dump_id}.html"
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(driver.page_source)
+        print(f"[DEBUG] Saved Cloudflare page HTML to {html_path}")
+
+        # Provide quick stats in the log
+        frames = driver.find_elements(By.TAG_NAME, "iframe")
+        print(f"[DEBUG] Number of iframes detected: {len(frames)}")
+        for idx, frame in enumerate(frames[:10]):
+            print(f"    iframe #{idx}: src={frame.get_attribute('src')}")
+
+        # List first 1-2 matching selectors (if any)
+        candidates = [
+            "//input[@type='checkbox']",
+            "//div[contains(@class,'ctp-checkbox')]",
+            "//button[contains(., 'Verify')]",
+            "//label[contains(., 'Verify')]",
+        ]
+        for sel in candidates:
+            found = driver.find_elements(By.XPATH, sel)
+            if found:
+                print(f"[DEBUG] Selector '{sel}' returned {len(found)} element(s)")
+                print(f"        First element tag: {found[0].tag_name} class: {found[0].get_attribute('class')}")
+    except Exception as e:
+        print(f"[DEBUG] Failed to dump Cloudflare page details: {e}")
 
 
 if __name__ == "__main__":
     done = main()
-    # Always succeed the job even if some URLs fail
-    exit(0)
+    if done:
+        exit(0)
+    else:
+        exit(100) # Github rerun signal
