@@ -3,7 +3,12 @@ import gspread
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import TimeoutException, WebDriverException, InvalidArgumentException
+from selenium.common.exceptions import TimeoutException, WebDriverException, InvalidArgumentException, NoSuchElementException
+# NEW: import undetected_chromedriver
+try:
+    import undetected_chromedriver as uc
+except ImportError:
+    uc = None  # Fallback handled later
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -16,6 +21,80 @@ import json
 import random
 import time
 from urllib.parse import urlparse
+from dotenv import load_dotenv
+
+# Automatically load variables from a .env file if present (local development)
+load_dotenv()
+
+# NEW: ActionChains for frame clicking
+from selenium.webdriver.common.action_chains import ActionChains
+import uuid
+
+DEBUG_CLOUDFLARE = os.getenv("DEBUG_CLOUDFLARE", "true").lower() in ("1", "true", "yes")
+
+# ---------------- Selenium driver factory -----------------
+
+def create_chrome_driver(headless: bool = True):
+    """Return a configured Chrome WebDriver instance, with automatic fallback.
+
+    Prefers undetected_chromedriver (uc) when installed; if uc fails or is not
+    present, falls back to the regular Selenium driver.
+    """
+    common_args = [
+        "--disable-extensions",
+        "--disable-plugins",
+        "--page-load-strategy=eager",
+        "--disable-notifications",
+        "--disable-popup-blocking",
+        "--disable-blink-features=AutomationControlled",
+    ]
+
+    # -------- Attempt #1: undetected-chromedriver --------
+    if uc is not None:
+        try:
+            uc_options = uc.ChromeOptions()
+            if headless:
+                uc_options.add_argument("--headless=new")
+            for arg in common_args:
+                uc_options.add_argument(arg)
+            # NOTE: uc already takes care of excludeSwitches / useAutomationExtension
+            driver = uc.Chrome(options=uc_options, use_subprocess=True)
+            driver.set_page_load_timeout(30)
+            driver.implicitly_wait(10)
+            return driver
+        except InvalidArgumentException as uc_err:
+            # uc produced an invalid option for the current Chrome version – fall back
+            print(f"undetected-chromedriver failed ({uc_err}); falling back to regular Selenium driver...")
+        except Exception as uc_generic_err:
+            print(f"undetected-chromedriver failed ({uc_generic_err}); falling back...")
+
+    # -------- Fallback: regular Selenium driver --------
+    options = Options()
+    if headless:
+        options.add_argument("--headless")
+    for arg in common_args:
+        options.add_argument(arg)
+    # Anti-detection tweaks supported by vanilla Chrome
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option("useAutomationExtension", False)
+
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
+    # hide webdriver flag
+    try:
+        driver.execute_cdp_cmd(
+            'Page.addScriptToEvaluateOnNewDocument',
+            {'source': 'Object.defineProperty(navigator, "webdriver", {get: () => undefined})'}
+        )
+    except Exception:
+        pass
+
+    driver.set_page_load_timeout(30)
+    driver.implicitly_wait(10)
+    return driver
+
+# ---------------- End driver factory -----------------
+
 
 def main():
     # Google API Setup
@@ -89,19 +168,8 @@ def main():
     status_results = []
 
     print("Preparing Selenium...")
-    # Selenium setup
-    chrome_options = Options()
-    # Selenium arguments
-    # TODO add bypasses for sites?
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--disable-extensions")
-    chrome_options.add_argument("--disable-plugins")
-    chrome_options.add_argument("--page-load-strategy=eager")
-    chrome_options.add_argument("--disable-notifications")
-    chrome_options.add_argument("--disable-popup-blocking")
-
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
+    # Generate Selenium driver (using undetected-chromedriver when available)
+    driver = create_chrome_driver(headless=True)
     driver.maximize_window()
 
     driver.set_page_load_timeout(30)
@@ -136,10 +204,14 @@ def main():
             continue
 
         if is_cloudflare_verification(driver):
-            status = "Cloudflare verification detected"
-            print(f"Cloudflare detected on {url}")
-            status_results.append([status])
-            continue
+            # Attempt to bypass Cloudflare banner automatically
+            if not bypass_cloudflare_verification(driver):
+                if DEBUG_CLOUDFLARE:
+                    debug_dump_cloudflare_page(driver, url)
+                status = "Cloudflare verification detected"
+                print(f"Cloudflare detected on {url} and could not be bypassed")
+                status_results.append([status])
+                continue
 
         try:
             page_width = driver.execute_script('return document.body.scrollWidth')
@@ -215,14 +287,120 @@ def sanitize_filename(url, max_length = 100):
     return safe_text
 
 def is_cloudflare_verification(driver):
+    """Return True if the current page appears to be a Cloudflare challenge."""
     try:
-        # Look for Cloudflare's "Please Wait" or "I'm not a robot" element (common indicator of CAPTCHA page)
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, 'div.cf-browser-verification'))
+        WebDriverWait(driver, 5).until(
+            lambda d: d.find_elements(By.CSS_SELECTOR, 'div.cf-browser-verification') or
+                      d.find_elements(By.XPATH, "//h1[contains(text(), 'Verify you are human')]") or
+                      d.find_elements(By.XPATH, "//iframe[contains(@src, 'challenges.cloudflare.com')]")
         )
         return True
-    except:
+    except TimeoutException:
         return False
+
+def bypass_cloudflare_verification(driver, max_wait=60):
+    """Attempt to automatically bypass Cloudflare \"Verify you are human\" banner.
+
+    The function tries to click on common verification buttons or simply waits
+    for Cloudflare to redirect if the challenge is passive. Returns True if the
+    banner disappears within the given timeout, otherwise False.
+    """
+    end_time = time.time() + max_wait
+
+    # Common XPATH selectors that appear on Cloudflare verification pages
+    possible_selectors = [
+        "//button[contains(., 'Verify') and not(contains(@style,'display: none'))]",
+        "//input[@type='button' and contains(@value, 'Verify')]",
+        "//button[contains(., 'Continue')]",
+        "//span[contains(text(), 'Verify')]/ancestor::button",
+        "//label[contains(., 'Verify you are human')]",
+    ]
+
+    # Attempt clicking inside potential iframes (Cloudflare Turnstile / hCaptcha)
+    def try_click_in_iframes():
+        frames = driver.find_elements(By.TAG_NAME, "iframe")
+        for frame in frames:
+            src = frame.get_attribute("src") or ""
+            if "challenge" in src or "turnstile" in src or "hcaptcha" in src:
+                try:
+                    # Attempt to click the centre of the iframe to trigger checkbox
+                    ActionChains(driver).move_to_element(frame).pause(0.3).click().perform()
+                except Exception:
+                    pass
+                try:
+                    driver.switch_to.frame(frame)
+                    # search for checkbox type input or label
+                    checkbox_like = driver.find_elements(By.XPATH, "//input[@type='checkbox'] | //div[contains(@class,'ctp-checkbox')] | //label")
+                    if checkbox_like:
+                        try:
+                            ActionChains(driver).move_to_element(checkbox_like[0]).pause(0.2).click().perform()
+                            driver.switch_to.default_content()
+                            return True
+                        except Exception:
+                            pass
+                    driver.switch_to.default_content()
+                except Exception:
+                    driver.switch_to.default_content()
+        return False
+
+    while time.time() < end_time:
+        if not is_cloudflare_verification(driver):
+            return True  # banner gone
+
+        try:
+            # First try on main document
+            clicked = False
+            for sel in possible_selectors:
+                elements = driver.find_elements(By.XPATH, sel)
+                if elements:
+                    try:
+                        elements[0].click()
+                        clicked = True
+                    except Exception:
+                        pass
+                    break
+
+            # If not clicked, try inside iframes
+            if not clicked:
+                try_click_in_iframes()
+        except Exception:
+            pass
+
+        time.sleep(3)  # Give page a moment to update
+
+    return not is_cloudflare_verification(driver)
+
+
+def debug_dump_cloudflare_page(driver, url: str):
+    """Dump the current page source and basic Cloudflare info to help with debugging."""
+    try:
+        filename_safe = sanitize_filename(url, 50)
+        dump_id = uuid.uuid4().hex[:8]
+        html_path = f"cf_debug_{filename_safe}_{dump_id}.html"
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(driver.page_source)
+        print(f"[DEBUG] Saved Cloudflare page HTML to {html_path}")
+
+        # Provide quick stats in the log
+        frames = driver.find_elements(By.TAG_NAME, "iframe")
+        print(f"[DEBUG] Number of iframes detected: {len(frames)}")
+        for idx, frame in enumerate(frames[:10]):
+            print(f"    iframe #{idx}: src={frame.get_attribute('src')}")
+
+        # List first 1-2 matching selectors (if any)
+        candidates = [
+            "//input[@type='checkbox']",
+            "//div[contains(@class,'ctp-checkbox')]",
+            "//button[contains(., 'Verify')]",
+            "//label[contains(., 'Verify')]",
+        ]
+        for sel in candidates:
+            found = driver.find_elements(By.XPATH, sel)
+            if found:
+                print(f"[DEBUG] Selector '{sel}' returned {len(found)} element(s)")
+                print(f"        First element tag: {found[0].tag_name} class: {found[0].get_attribute('class')}")
+    except Exception as e:
+        print(f"[DEBUG] Failed to dump Cloudflare page details: {e}")
 
 
 if __name__ == "__main__":
