@@ -21,6 +21,11 @@ import json
 import random
 import time
 from urllib.parse import urlparse
+from dotenv import load_dotenv
+
+# Automatically load variables from a .env file if present (local development)
+load_dotenv()
+
 # NEW: ActionChains for frame clicking
 from selenium.webdriver.common.action_chains import ActionChains
 import uuid
