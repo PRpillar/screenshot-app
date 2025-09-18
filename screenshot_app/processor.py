@@ -126,7 +126,9 @@ def process_batch(
         try:
             file_metadata = {"name": screenshot_path, "parents": [folder_id]}
             media = MediaFileUpload(screenshot_path, mimetype="image/png")
+            logger.info("Row %s: Uploading %s to folder %s", row_idx, screenshot_path, folder_id)
             drive_service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+            logger.info("Row %s: Upload complete %s", row_idx, screenshot_path)
         except Exception:
             status = "Upload failed"
             logger.exception("Row %s: Upload failed for %s", row_idx, screenshot_path)
