@@ -47,6 +47,7 @@ jobs:
           args: >-
             --exit-node=${{ secrets.TS_EXIT_NODE_IP }}
             --accept-routes
+            --accept-dns=false
             --timeout=60s
 
       # Helpful diagnostics if something goes wrong
@@ -56,6 +57,16 @@ jobs:
           tailscale status || true
           echo "Runner egress IP (should be exit-node IP):"
           curl -4s https://ifconfig.me || true
+
+      - name: Preflight connectivity (DNS/egress)
+        run: |
+          set -e
+          if curl -fsS --max-time 10 https://oauth2.googleapis.com >/dev/null; then
+            echo "Connectivity OK"
+          else
+            echo "Connectivity check failed. Disabling Tailscale and continuing without it."
+            sudo -E tailscale down || true
+          fi
 
       - name: Init run log
         run: echo "--- run start $(date -u +'%Y-%m-%dT%H:%M:%SZ') ---" > run.log
