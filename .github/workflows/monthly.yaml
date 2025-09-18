@@ -57,10 +57,13 @@ jobs:
           echo "Runner egress IP (should be exit-node IP):"
           curl -4s https://ifconfig.me || true
 
+      - name: Init run log
+        run: echo "--- run start $(date -u +'%Y-%m-%dT%H:%M:%SZ') ---" > run.log
+
       - name: Run Python Script
         run: |
           set -o pipefail
-          python app.py 2>&1 | tee run.log
+          python app.py 2>&1 | tee -a run.log
 
       - name: Upload run log
         if: always()
@@ -68,6 +71,7 @@ jobs:
         with:
           name: run-log
           path: run.log
+          if-no-files-found: warn
 
       # Optional: capture tailscaled log if needed
       - name: Dump tailscaled log on failure
