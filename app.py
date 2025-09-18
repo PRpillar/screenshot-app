@@ -20,16 +20,12 @@ def main() -> bool:
             debug_cloudflare=cfg.debug_cloudflare,
         )
     except Exception:
-        # Ensure we log fatal exceptions to stdout/stderr for CI visibility
-        import logging
-        logging.getLogger("screenshot_app").exception("Fatal error running batch")
+        logger.exception("Fatal error running batch")
         raise
 
 
 if __name__ == "__main__":
     done = main()
-    if done:
-        exit(0)
-    else:
-        exit(100)
+    # Always exit 0 so CI succeeds even if more rows remain for next run
+    exit(0)
 
