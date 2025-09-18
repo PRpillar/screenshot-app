@@ -58,7 +58,16 @@ jobs:
           curl -4s https://ifconfig.me || true
 
       - name: Run Python Script
-        run: python app.py
+        run: |
+          set -o pipefail
+          python app.py 2>&1 | tee run.log
+
+      - name: Upload run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-log
+          path: run.log
 
       # Optional: capture tailscaled log if needed
       - name: Dump tailscaled log on failure
