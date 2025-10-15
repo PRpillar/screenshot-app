@@ -61,11 +61,25 @@ jobs:
       - name: Preflight connectivity (DNS/egress)
         run: |
           set -e
-          if curl -fsS --max-time 10 https://oauth2.googleapis.com >/dev/null; then
-            echo "Connectivity OK"
+          probes_ok=0
+          for url in https://oauth2.googleapis.com https://www.googleapis.com; do
+            if curl -fsS --max-time 10 "$url" >/dev/null; then
+              probes_ok=$((probes_ok+1))
+            fi
+          done
+          if [ "$probes_ok" -ge 1 ]; then
+            echo "Connectivity OK via current network"
           else
-            echo "Connectivity check failed. Disabling Tailscale and continuing without it."
-            sudo -E tailscale down || true
+            echo "Connectivity probes failed. Attempting to keep Tailscale but drop exit-node." 
+            # Try dropping exit-node first (keeps tailnet routing and DNS if any)
+            sudo -E tailscale set --exit-node= --exit-node-allow-lan-access=false || true
+            # Recheck quickly; if still failing, proceed without Tailscale
+            if curl -fsS --max-time 10 https://oauth2.googleapis.com >/dev/null; then
+              echo "Connectivity OK after removing exit-node"
+            else
+              echo "Still failing; bringing Tailscale down and continuing without it."
+              sudo -E tailscale down || true
+            fi
           fi
 
       - name: Init run log

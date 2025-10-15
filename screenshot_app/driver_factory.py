@@ -1,4 +1,7 @@
 from typing import Optional
+import os
+import random
+import logging
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -13,6 +16,7 @@ except Exception:  # pragma: no cover - optional dependency
 
 
 def create_chrome_driver(headless: bool = True):
+    logger = logging.getLogger("screenshot_app.driver")
     common_args = [
         "--disable-extensions",
         "--disable-plugins",
@@ -21,6 +25,9 @@ def create_chrome_driver(headless: bool = True):
         "--disable-popup-blocking",
         "--disable-blink-features=AutomationControlled",
     ]
+    # Randomize basic fingerprint bits
+    accept_lang = os.getenv("BROWSER_ACCEPT_LANGUAGE", random.choice(["en-US,en;q=0.9","en-GB,en;q=0.9","en,en-US;q=0.8"]))
+    ua = os.getenv("BROWSER_USER_AGENT", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + str(random.randint(120, 141)) + ".0.0.0 Safari/537.36")
 
     # Attempt using undetected-chromedriver first
     if uc is not None:
@@ -30,9 +37,12 @@ def create_chrome_driver(headless: bool = True):
                 uc_options.add_argument("--headless=new")
             for arg in common_args:
                 uc_options.add_argument(arg)
+            uc_options.add_argument(f"--user-agent={ua}")
+            uc_options.add_argument(f"--accept-language={accept_lang}")
             driver = uc.Chrome(options=uc_options, use_subprocess=True)
             driver.set_page_load_timeout(30)
             driver.implicitly_wait(10)
+            logger.info("Using undetected-chromedriver")
             return driver
         except InvalidArgumentException:
             pass
@@ -45,6 +55,8 @@ def create_chrome_driver(headless: bool = True):
         options.add_argument("--headless")
     for arg in common_args:
         options.add_argument(arg)
+    options.add_argument(f"--user-agent={ua}")
+    options.add_argument(f"--accept-language={accept_lang}")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
 
@@ -60,6 +72,7 @@ def create_chrome_driver(headless: bool = True):
 
     driver.set_page_load_timeout(30)
     driver.implicitly_wait(10)
+    logger.warning("Falling back to vanilla Selenium driver; UC unavailable or failed")
     return driver
 
 
