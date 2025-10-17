@@ -11,6 +11,7 @@ jobs:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
       DISABLE_UC: "true"
       PAGE_LOAD_STRATEGY: "none"
+      PYTHONUNBUFFERED: "1"
 
     steps:
       - uses: actions/checkout@v4
@@ -99,7 +100,7 @@ jobs:
         timeout-minutes: 120
         run: |
           set -o pipefail
-          python app.py 2>&1 | tee -a run.log
+          python -u app.py 2>&1 | stdbuf -oL -eL tee -a run.log
 
       - name: Log egress IP after run
         if: always()
