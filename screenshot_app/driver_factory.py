@@ -20,7 +20,6 @@ def create_chrome_driver(headless: bool = True):
     common_args = [
         "--disable-extensions",
         "--disable-plugins",
-        "--page-load-strategy=eager",
         "--disable-notifications",
         "--disable-popup-blocking",
         "--disable-blink-features=AutomationControlled",
@@ -33,6 +32,7 @@ def create_chrome_driver(headless: bool = True):
 
     # Allow disabling UC via env (more stable in CI)
     disable_uc = os.getenv("DISABLE_UC", "false").lower() in ("1", "true", "yes")
+    page_load_strategy = os.getenv("PAGE_LOAD_STRATEGY", "none").lower()
 
     # Attempt using undetected-chromedriver first (unless disabled)
     if uc is not None and not disable_uc:
@@ -44,6 +44,11 @@ def create_chrome_driver(headless: bool = True):
                 uc_options.add_argument(arg)
             uc_options.add_argument(f"--user-agent={ua}")
             uc_options.add_argument(f"--accept-language={accept_lang}")
+            try:
+                # Some UC builds expose the same API as Selenium Options
+                uc_options.page_load_strategy = page_load_strategy
+            except Exception:
+                pass
             driver = uc.Chrome(options=uc_options, use_subprocess=True)
             driver.set_page_load_timeout(30)
             driver.implicitly_wait(10)
@@ -65,6 +70,8 @@ def create_chrome_driver(headless: bool = True):
     options.add_argument(f"--accept-language={accept_lang}")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
+    # Use Selenium capability for non-blocking navigations so we control waits explicitly
+    options.page_load_strategy = page_load_strategy
 
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=options)
