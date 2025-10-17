@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+      DISABLE_UC: "true"
 
     steps:
       - uses: actions/checkout@v4
