@@ -1,4 +1,5 @@
 import os
+import signal
 import random
 import time
 import logging
@@ -43,6 +44,22 @@ def safe_navigate(driver, url: str, wait_seconds: int = 20) -> None:
         # Propagate so caller can mark status and continue
         raise
 
+
+def run_with_timeout(func, seconds: int):
+    """Run callable with a hard timeout using Unix SIGALRM (Linux CI safe).
+
+    Ensures we escape hangs inside WebDriver/CDP even if their own timeouts fail.
+    """
+    def _handler(signum, frame):
+        raise TimeoutException("Hard timeout exceeded")
+
+    old_handler = signal.signal(signal.SIGALRM, _handler)
+    try:
+        signal.alarm(seconds)
+        return func()
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
 
 def read_config_values(config_sheet: gspread.Worksheet) -> Tuple[int, int]:
     start_row_value = config_sheet.acell("B2").value
@@ -114,7 +131,8 @@ def process_batch(
         t0 = time.time()
         logger.info("Row %s: Navigating %s", row_idx, url)
         try:
-            safe_navigate(driver, url, wait_seconds=20)
+            # Hard cap navigation at 45s to avoid indefinite hangs
+            run_with_timeout(lambda: safe_navigate(driver, url, wait_seconds=20), seconds=45)
             time.sleep(random.uniform(2, 5))
         except TimeoutException:
             status = "Timeout"
