@@ -143,6 +143,12 @@ def process_batch(
 
     status_results: List[List[str]] = []
 
+    blacklist_substrings = [
+        "//investing.com/",
+        "//mx.investing.com/",
+        "//www.investing.com/",
+    ]
+
     for index, record in enumerate(batch_records):
         url = record.link
         folder_id = record.folder_id
@@ -150,6 +156,12 @@ def process_batch(
         row_idx = start_row + index
         t0 = time.time()
         logger.info("Row %s: Navigating %s", row_idx, url)
+        # Skip problematic domains that wedge headless Chrome
+        if any(s in url for s in blacklist_substrings):
+            status = "Skipped (blacklist)"
+            logger.warning("Row %s: Skipping blacklisted URL %s", row_idx, url)
+            status_results.append([status])
+            continue
         try:
             # Hard cap navigation at 45s to avoid indefinite hangs
             run_with_timeout(lambda: safe_navigate(driver, url, wait_seconds=20), seconds=45)
