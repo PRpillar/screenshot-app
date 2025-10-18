@@ -34,11 +34,31 @@ def safe_navigate(driver, url: str, wait_seconds: int = 20) -> None:
             driver.execute_cdp_cmd("Page.stopLoading", {})
         except Exception:
             pass
+        # Use async JS navigate with a hard script timeout enforced by Selenium
         try:
-            driver.execute_cdp_cmd("Page.navigate", {"url": url})
+            driver.set_script_timeout(wait_seconds)
         except Exception:
-            # Fallback: JS redirect if CDP navigate is unavailable
-            driver.execute_script("window.location.href = arguments[0];", url)
+            pass
+        try:
+            driver.execute_async_script(
+                """
+                const url = arguments[0];
+                const done = arguments[arguments.length - 1];
+                let finished = false;
+                function finish() { if (!finished) { finished = true; done(); } }
+                try {
+                  window.addEventListener('load', finish, { once: true });
+                } catch (e) {}
+                setTimeout(finish, Math.max(2000, %d * 500));
+                try {
+                  window.location.href = url;
+                } catch (e) { finish(); }
+                """ % wait_seconds,
+                url,
+            )
+        except Exception:
+            # If async script fails or times out, proceed to explicit wait below
+            pass
         WebDriverWait(driver, wait_seconds).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
     except TimeoutException:
         # Propagate so caller can mark status and continue
