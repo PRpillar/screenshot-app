@@ -21,6 +21,26 @@ from .models import RowRecord
 from .screenshotter import build_screenshot_filename, take_fullpage_screenshot
 
 
+def safe_navigate(driver, url: str, wait_seconds: int = 20) -> None:
+    """Navigate via JS to avoid rare hangs in driver.get.
+
+    We set location with JS and then explicitly wait for a <body> to appear.
+    This avoids blocking on network idle or long-loading trackers.
+    """
+    try:
+        # Reset to a blank page first to ensure a clean navigation
+        try:
+            driver.execute_script("window.stop();")
+        except Exception:
+            pass
+        driver.get("about:blank")
+        driver.execute_script("window.location.href = arguments[0];", url)
+        WebDriverWait(driver, wait_seconds).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+    except TimeoutException:
+        # Propagate so caller can mark status and continue
+        raise
+
+
 def read_config_values(config_sheet: gspread.Worksheet) -> Tuple[int, int]:
     start_row_value = config_sheet.acell("B2").value
     if start_row_value is None or start_row_value.strip() == "" or not start_row_value.strip().isdigit():
@@ -91,9 +111,8 @@ def process_batch(
         t0 = time.time()
         logger.info("Row %s: Navigating %s", row_idx, url)
         try:
-            driver.get(url)
-            WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
-            time.sleep(random.uniform(5, 10))
+            safe_navigate(driver, url, wait_seconds=20)
+            time.sleep(random.uniform(2, 5))
         except TimeoutException:
             status = "Timeout"
             logger.warning("Row %s: Timeout navigating %s", row_idx, url)
