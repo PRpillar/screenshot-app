@@ -28,13 +28,16 @@ def safe_navigate(driver, url: str, wait_seconds: int = 20) -> None:
     This avoids blocking on network idle or long-loading trackers.
     """
     try:
-        # Reset to a blank page first to ensure a clean navigation
+        # Stop any current load and use CDP to navigate without blocking on driver.get
         try:
-            driver.execute_script("window.stop();")
+            driver.execute_cdp_cmd("Page.stopLoading", {})
         except Exception:
             pass
-        driver.get("about:blank")
-        driver.execute_script("window.location.href = arguments[0];", url)
+        try:
+            driver.execute_cdp_cmd("Page.navigate", {"url": url})
+        except Exception:
+            # Fallback: JS redirect if CDP navigate is unavailable
+            driver.execute_script("window.location.href = arguments[0];", url)
         WebDriverWait(driver, wait_seconds).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
     except TimeoutException:
         # Propagate so caller can mark status and continue
