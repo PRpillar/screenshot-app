@@ -9,6 +9,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+      DISABLE_UC: "true"
+      PAGE_LOAD_STRATEGY: "none"
+      PYTHONUNBUFFERED: "1"
 
     steps:
       - uses: actions/checkout@v4
@@ -61,20 +64,48 @@ jobs:
       - name: Preflight connectivity (DNS/egress)
         run: |
           set -e
-          if curl -fsS --max-time 10 https://oauth2.googleapis.com >/dev/null; then
-            echo "Connectivity OK"
-          else
-            echo "Connectivity check failed. Disabling Tailscale and continuing without it."
-            sudo -E tailscale down || true
+          # Use endpoints that return 204/200 instead of 404 to avoid false negatives
+          targets=(
+            "https://www.google.com/generate_204"
+            "https://www.gstatic.com/generate_204"
+            "https://www.googleapis.com/robots.txt"
+          )
+          ok=0
+          for t in "${targets[@]}"; do
+            code=$(curl -fsS -o /dev/null -w "%{http_code}" --max-time 10 "$t" || true)
+            if [ "$code" = "204" ] || [ "$code" = "200" ]; then ok=$((ok+1)); fi
+          done
+
+          if [ "$ok" -ge 1 ]; then
+            echo "Connectivity OK via current network (at least one probe succeeded)"
+            exit 0
           fi
+
+          echo "Connectivity probes failed; verifying exit-node reachability before changing state"
+          # Verify exit-node is reachable; keep Tailscale if it is
+          if sudo -E tailscale ping -c 2 "${{ secrets.TS_EXIT_NODE_IP }}" >/dev/null 2>&1; then
+            echo "Exit node reachable; keeping Tailscale and continuing"
+            exit 0
+          fi
+
+          echo "Exit node not reachable; removing exit-node while keeping Tailscale up"
+          sudo -E tailscale set --exit-node= --exit-node-allow-lan-access=false || true
+          # Final quick probe; continue regardless to avoid tearing down Tailscale for CAPTCHAs
+          curl -fsS -o /dev/null --max-time 10 https://www.google.com/generate_204 || true
 
       - name: Init run log
         run: echo "--- run start $(date -u +'%Y-%m-%dT%H:%M:%SZ') ---" > run.log
 
       - name: Run Python Script
+        timeout-minutes: 120
         run: |
           set -o pipefail
-          python app.py 2>&1 | tee -a run.log
+          python -u app.py 2>&1 | stdbuf -oL -eL tee -a run.log
+
+      - name: Log egress IP after run
+        if: always()
+        run: |
+          echo "Egress IP post-run:" $(curl -4s https://ifconfig.me || true)
 
       - name: Upload run log
         if: always()

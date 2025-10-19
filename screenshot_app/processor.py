@@ -1,4 +1,5 @@
 import os
+import signal
 import random
 import time
 import logging
@@ -20,6 +21,65 @@ from .driver_factory import create_chrome_driver
 from .models import RowRecord
 from .screenshotter import build_screenshot_filename, take_fullpage_screenshot
 
+
+def safe_navigate(driver, url: str, wait_seconds: int = 20) -> None:
+    """Navigate via JS to avoid rare hangs in driver.get.
+
+    We set location with JS and then explicitly wait for a <body> to appear.
+    This avoids blocking on network idle or long-loading trackers.
+    """
+    try:
+        # Stop any current load and use CDP to navigate without blocking on driver.get
+        try:
+            driver.execute_cdp_cmd("Page.stopLoading", {})
+        except Exception:
+            pass
+        # Use async JS navigate with a hard script timeout enforced by Selenium
+        try:
+            driver.set_script_timeout(wait_seconds)
+        except Exception:
+            pass
+        try:
+            driver.execute_async_script(
+                """
+                const url = arguments[0];
+                const done = arguments[arguments.length - 1];
+                let finished = false;
+                function finish() { if (!finished) { finished = true; done(); } }
+                try {
+                  window.addEventListener('load', finish, { once: true });
+                } catch (e) {}
+                setTimeout(finish, Math.max(2000, %d * 500));
+                try {
+                  window.location.href = url;
+                } catch (e) { finish(); }
+                """ % wait_seconds,
+                url,
+            )
+        except Exception:
+            # If async script fails or times out, proceed to explicit wait below
+            pass
+        WebDriverWait(driver, wait_seconds).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+    except TimeoutException:
+        # Propagate so caller can mark status and continue
+        raise
+
+
+def run_with_timeout(func, seconds: int):
+    """Run callable with a hard timeout using Unix SIGALRM (Linux CI safe).
+
+    Ensures we escape hangs inside WebDriver/CDP even if their own timeouts fail.
+    """
+    def _handler(signum, frame):
+        raise TimeoutException("Hard timeout exceeded")
+
+    old_handler = signal.signal(signal.SIGALRM, _handler)
+    try:
+        signal.alarm(seconds)
+        return func()
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
 
 def read_config_values(config_sheet: gspread.Worksheet) -> Tuple[int, int]:
     start_row_value = config_sheet.acell("B2").value
@@ -83,6 +143,12 @@ def process_batch(
 
     status_results: List[List[str]] = []
 
+    blacklist_substrings = [
+        "//investing.com/",
+        "//mx.investing.com/",
+        "//www.investing.com/",
+    ]
+
     for index, record in enumerate(batch_records):
         url = record.link
         folder_id = record.folder_id
@@ -90,10 +156,16 @@ def process_batch(
         row_idx = start_row + index
         t0 = time.time()
         logger.info("Row %s: Navigating %s", row_idx, url)
+        # Skip problematic domains that wedge headless Chrome
+        if any(s in url for s in blacklist_substrings):
+            status = "Skipped (blacklist)"
+            logger.warning("Row %s: Skipping blacklisted URL %s", row_idx, url)
+            status_results.append([status])
+            continue
         try:
-            driver.get(url)
-            WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
-            time.sleep(random.uniform(5, 10))
+            # Hard cap navigation at 45s to avoid indefinite hangs
+            run_with_timeout(lambda: safe_navigate(driver, url, wait_seconds=20), seconds=45)
+            time.sleep(random.uniform(2, 5))
         except TimeoutException:
             status = "Timeout"
             logger.warning("Row %s: Timeout navigating %s", row_idx, url)

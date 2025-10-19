@@ -5,8 +5,7 @@
   "reportMissingImports": true,
   "executionEnvironments": [
     {
-      "root": ".",
-      "venv": "venv"
+      "root": "."
     }
   ]
 }
